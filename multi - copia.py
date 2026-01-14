@@ -7,5 +7,4 @@ numero1 = int(input("Ingrese primer número: "))
 numero2 = int(input("Ingrese segundo número: "))
 res = multiplicacion(numero1, numero2)
 print("El resultado es", res)
-print("El resultado es", res)
 
