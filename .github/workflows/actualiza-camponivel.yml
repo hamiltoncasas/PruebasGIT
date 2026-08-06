@@ -1,20 +1,33 @@
 name: Actualizar dropdown de padres
+
 on:
   schedule:
-    - cron: '0 * * * *'  # Cada hora
-  issues:
-    types: [opened, closed, edited]
+    - cron: '0 * * * *'   # Se ejecuta cada hora
+  workflow_dispatch:      # Permite ejecutarlo manualmente
+
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Generar lista de Issues superiores
-        id: generate
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Obtener lista de Issues (Épicas, Features, HUs)
+        id: get_parents
         run: |
-          # Obtener Issues de tipo "Historia De Usuario" (o Feature, etc.)
-          # usando la API de GitHub y generar un archivo JSON
-        - uses: ShaMan123/gha-form-dropdown-options@v1
-          with:
-            file: .github/issue-forms/padres.json
-            options: ${{ steps.generate.outputs.options }}
+          # Obtener Issues abiertos que NO son Tarea ni Bug
+          # Asumiendo que usas la etiqueta "epic", "feature", "user-story"
+          PARENTS=$(gh issue list --state open --label epic,feature,user-story --json number,title --jq 'map("#\(.number) - \(.title)") | join("\n        - ")')
+          echo "PARENTS=$PARENTS" >> $GITHUB_ENV
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Actualizar dropdown con la acción
+        uses: ShaMan123/gha-form-dropdown-options@v2.0.3
+        with:
+          template: .github/template_report.yml
+          form: .github/ISSUE_TEMPLATE/nuevo-item.yml
+          id: padre
+          options: |
+            - Ninguno (es Epica)
+            ${{ env.PARENTS }}
