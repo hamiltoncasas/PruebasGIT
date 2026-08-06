@@ -1,4 +1,4 @@
-name: "Nuevo Item Jerárquico"
+Epicaname: "Nuevo Item Jerárquico"
 description: "Crea un item con su nivel y relación"
 title: "[Nivel] - Título"
 labels: ["needs-triage"]
@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         ## Selecciona el nivel y el padre (si aplica)
-        > **Nota:** Si el Issue padre que buscas no aparece en el desplegable, edita este archivo para añadirlo (formato: `"#N - Título"`).
+        > **Nota:** Si no es Epica, indica el número del Issue padre. Solo Epica puede dejarlo vacío.
 
   - type: dropdown
     id: nivel
@@ -15,7 +15,7 @@ body:
       label: "Nivel"
       description: "Elige el tipo de item"
       options:
-        - Épica
+        - Epica
         - Feature
         - Historia De Usuario
         - Tarea
@@ -23,23 +23,12 @@ body:
     validations:
       required: true
 
-  - type: dropdown
+  - type: input
     id: padre
     attributes:
-      label: "Issue superior"
-      description: "Selecciona el Issue padre al que pertenece este item. Solo Épica puede seleccionar 'Ninguno'."
-      options:
-        - "Ninguno (es Épica)"
-        - "#1 - Épica: Inicio del proyecto"           # 🔁 Reemplaza con tus Issues
-        - "#2 - Épica: Infraestructura"               # 🔁 Reemplaza con tus Issues
-        - "#3 - Feature: Autenticación"               # 🔁 Reemplaza con tus Issues
-        - "#4 - Feature: Panel de administración"     # 🔁 Reemplaza con tus Issues
-        - "#5 - Historia De Usuario: Login con Google" # 🔁 Reemplaza con tus Issues
-        - "#6 - Historia De Usuario: Registro"        # 🔁 Reemplaza con tus Issues
-        - "#7 - Historia De Usuario: Recuperación"    # 🔁 Reemplaza con tus Issues
-        # 👇 Añade aquí más opciones según tus Issues
-        # Ejemplo: "#8 - Feature: Módulo de reportes"
-      default: 0   # "Ninguno (es Épica)" es la opción por defecto
+      label: "Issue superior (número)"
+      description: "Si no es Epica, indica el número del Issue padre (ej: 42). Solo Epica puede dejarlo vacío."
+      placeholder: "Ej: 42"
     validations:
       required: false
 

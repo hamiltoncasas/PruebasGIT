@@ -20,24 +20,16 @@ jobs:
           # Extraer nivel
           NIVEL=$(echo "$BODY" | grep -A1 "### Nivel" | tail -n1 | xargs)
           
-          # Extraer padre (ej: "#3 - Feature: Autenticación")
-          PADRE_LINEA=$(echo "$BODY" | grep -A1 "### Issue superior" | tail -n1 | xargs)
-          
-          # Si la línea contiene "#", extraemos el número (ej: "3")
-          if echo "$PADRE_LINEA" | grep -q "#"; then
-            PADRE=$(echo "$PADRE_LINEA" | grep -o '#[0-9]*' | sed 's/#//')
-          else
-            PADRE=""
-          fi
+          # Extraer padre (campo de texto simple)
+          PADRE=$(echo "$BODY" | grep -A1 "### Issue superior" | tail -n1 | xargs)
           
           echo "NIVEL=$NIVEL" >> $GITHUB_ENV
           echo "PADRE=$PADRE" >> $GITHUB_ENV
-          echo "PADRE_LINEA=$PADRE_LINEA" >> $GITHUB_ENV
 
       - name: Asignar etiqueta según nivel
         run: |
           case "${{ env.NIVEL }}" in
-            "Épica")
+            "Epica")
               LABEL="epic"
               ;;
             "Feature")
@@ -167,12 +159,23 @@ jobs:
             console.log(`Campo "Nivel" actualizado a "${nivel}" en el Project.`);
 
       - name: Crear relación con padre (comentario + etiqueta)
-        if: env.PADRE != '' && env.NIVEL != 'Épica'
+        if: env.PADRE != '' && env.NIVEL != 'Epica'
         uses: actions/github-script@v6
         with:
           script: |
             const issue = context.issue;
             const padre = parseInt(process.env.PADRE);
+            
+            // Verificar que sea un número válido
+            if (isNaN(padre)) {
+              await github.rest.issues.createComment({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                body: `⚠️ El valor ingresado para el Issue superior no es un número válido: "${process.env.PADRE}"`
+              });
+              return;
+            }
             
             try {
               await github.rest.issues.get({
