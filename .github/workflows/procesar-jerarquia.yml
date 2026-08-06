@@ -17,10 +17,7 @@ jobs:
         run: |
           BODY="${{ github.event.issue.body }}"
           
-          # Extraer nivel
           NIVEL=$(echo "$BODY" | grep -A1 "### Nivel" | tail -n1 | xargs)
-          
-          # Extraer número de padre (campo input)
           PADRE=$(echo "$BODY" | grep -A1 "### Número del Issue superior" | tail -n1 | xargs)
           
           echo "NIVEL=$NIVEL" >> $GITHUB_ENV
@@ -29,21 +26,11 @@ jobs:
       - name: Asignar etiqueta según nivel
         run: |
           case "${{ env.NIVEL }}" in
-            "Epica")
-              LABEL="epic"
-              ;;
-            "Feature")
-              LABEL="feature"
-              ;;
-            "Historia De Usuario")
-              LABEL="user-story"
-              ;;
-            "Tarea")
-              LABEL="task"
-              ;;
-            "Bug")
-              LABEL="bug"
-              ;;
+            "Epica") LABEL="epic" ;;
+            "Feature") LABEL="feature" ;;
+            "Historia De Usuario") LABEL="user-story" ;;
+            "Tarea") LABEL="task" ;;
+            "Bug") LABEL="bug" ;;
           esac
           echo "LABEL=$LABEL" >> $GITHUB_ENV
 
@@ -66,7 +53,6 @@ jobs:
             const { owner, repo, number } = context.issue;
             const nivel = process.env.NIVEL;
             
-            // 1. Obtener el proyecto v2 (asume que hay uno solo)
             const queryProject = `
               query($owner: String!, $repo: String!) {
                 repository(owner: $owner, name: $repo) {
@@ -95,19 +81,15 @@ jobs:
             const project = projectData.repository.projectsV2.nodes[0];
             if (!project) throw new Error("No se encontró ningún Project v2 en este repositorio.");
             
-            // 2. Encontrar el campo "Nivel"
             const field = project.fields.nodes.find(f => f.name === "Nivel");
             if (!field) throw new Error("No se encontró el campo 'Nivel' en el Project.");
             
-            // 3. Encontrar la opción seleccionada
             const option = field.options.find(o => o.name === nivel);
             if (!option) throw new Error(`No se encontró la opción "${nivel}" en el campo 'Nivel'.`);
             
-            // 4. Obtener el node_id del issue
             const issueData = await github.rest.issues.get({ owner, repo, issue_number: number });
             const issueId = issueData.data.node_id;
             
-            // 5. Añadir el issue al project (si no está ya)
             const mutationAdd = `
               mutation($projectId: ID!, $issueId: ID!) {
                 addProjectV2ItemById(input: { projectId: $projectId, contentId: $issueId }) {
@@ -119,7 +101,6 @@ jobs:
             `;
             await github.graphql(mutationAdd, { projectId: project.id, issueId: issueId });
             
-            // 6. Obtener el itemId del issue en el project
             const queryItem = `
               query($projectId: ID!, $issueId: ID!) {
                 node(id: $projectId) {
@@ -136,7 +117,6 @@ jobs:
             const itemData = await github.graphql(queryItem, { projectId: project.id, issueId: issueId });
             const itemId = itemData.node.items.nodes[0].id;
             
-            // 7. Actualizar el campo con la opción seleccionada
             const mutationUpdate = `
               mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
                 updateProjectV2ItemFieldValue(input: {
