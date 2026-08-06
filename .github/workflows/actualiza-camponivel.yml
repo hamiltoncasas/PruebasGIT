@@ -1,0 +1,20 @@
+name: Actualizar dropdown de padres
+on:
+  schedule:
+    - cron: '0 * * * *'  # Cada hora
+  issues:
+    types: [opened, closed, edited]
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generar lista de Issues superiores
+        id: generate
+        run: |
+          # Obtener Issues de tipo "Historia De Usuario" (o Feature, etc.)
+          # usando la API de GitHub y generar un archivo JSON
+        - uses: ShaMan123/gha-form-dropdown-options@v1
+          with:
+            file: .github/issue-forms/padres.json
+            options: ${{ steps.generate.outputs.options }}
