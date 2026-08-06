@@ -17,15 +17,13 @@ jobs:
         run: |
           BODY="${{ github.event.issue.body }}"
           
-          # Extraer nivel (exactamente el texto seleccionado: Épica, Feature, etc.)
           NIVEL=$(echo "$BODY" | grep -A1 "### Nivel" | tail -n1 | xargs)
-          # Extraer número de padre
           PADRE=$(echo "$BODY" | grep -A1 "### Issue superior" | tail -n1 | xargs)
           
           echo "NIVEL=$NIVEL" >> $GITHUB_ENV
           echo "PADRE=$PADRE" >> $GITHUB_ENV
 
-      - name: Asignar etiqueta según nivel (Tarea y Bug comparten nivel pero etiqueta distinta)
+      - name: Asignar etiqueta según nivel
         run: |
           case "${{ env.NIVEL }}" in
             "Epica")
@@ -43,9 +41,6 @@ jobs:
             "Bug")
               LABEL="bug"
               ;;
-            *)
-              LABEL="sin-nivel"
-              ;;
           esac
           echo "LABEL=$LABEL" >> $GITHUB_ENV
 
@@ -61,38 +56,115 @@ jobs:
               labels: [process.env.LABEL]
             });
 
-      # Opcional: Si quieres asignar también un campo numérico de nivel (1-4) para ordenar
-      - name: Calcular nivel numérico (opcional)
-        id: nivel_num
-        run: |
-          case "${{ env.NIVEL }}" in
-            "Epica")
-              echo "NUM=1" >> $GITHUB_ENV
-              ;;
-            "Feature")
-              echo "NUM=2" >> $GITHUB_ENV
-              ;;
-            "Historia De Usuario")
-              echo "NUM=3" >> $GITHUB_ENV
-              ;;
-            "Tarea"|"Bug")
-              echo "NUM=4" >> $GITHUB_ENV
-              ;;
-          esac
-
-      # Si quieres actualizar el campo "Nivel" en tu Project (usando la API REST o GraphQL),
-      # aquí iría el código para hacerlo. Como es complejo, lo dejamos comentado.
-      # Pero puedes usar la etiqueta para agrupar en el Project.
+      - name: Actualizar campo "Nivel" en Project v2
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo, number } = context.issue;
+            const nivel = process.env.NIVEL;
+            
+            // 1. Obtener el ID del proyecto v2
+            // Asume que solo hay un proyecto en el repositorio. Si hay varios, especifica el nombre.
+            const queryProject = `
+              query($owner: String!, $repo: String!) {
+                repository(owner: $owner, name: $repo) {
+                  projectsV2(first: 1) {
+                    nodes {
+                      id
+                      title
+                      fields(first: 20) {
+                        nodes {
+                          id
+                          name
+                          ... on ProjectV2SingleSelectField {
+                            options {
+                              id
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+            const projectData = await github.graphql(queryProject, { owner, repo });
+            const project = projectData.repository.projectsV2.nodes[0];
+            if (!project) throw new Error("No se encontró ningún Project v2 en este repositorio.");
+            
+            // 2. Encontrar el campo "Nivel"
+            const field = project.fields.nodes.find(f => f.name === "Nivel");
+            if (!field) throw new Error("No se encontró el campo 'Nivel' en el Project.");
+            
+            // 3. Encontrar la opción seleccionada (debe coincidir exactamente con el valor)
+            const option = field.options.find(o => o.name === nivel);
+            if (!option) throw new Error(`No se encontró la opción "${nivel}" en el campo 'Nivel'.`);
+            
+            // 4. Obtener el node_id del issue (necesario para añadirlo al project)
+            const issueData = await github.rest.issues.get({ owner, repo, issue_number: number });
+            const issueId = issueData.data.node_id;
+            
+            // 5. Añadir el issue al project (si no está ya)
+            const mutationAdd = `
+              mutation($projectId: ID!, $issueId: ID!) {
+                addProjectV2ItemById(input: { projectId: $projectId, contentId: $issueId }) {
+                  item {
+                    id
+                  }
+                }
+              }
+            `;
+            await github.graphql(mutationAdd, { projectId: project.id, issueId: issueId });
+            // Nota: Si el issue ya está en el project, esta mutación fallará silenciosamente (no pasa nada).
+            
+            // 6. Obtener el itemId del issue recién añadido (o existente)
+            const queryItem = `
+              query($projectId: ID!, $issueId: ID!) {
+                node(id: $projectId) {
+                  ... on ProjectV2 {
+                    items(first: 1, filter: { contentIds: [$issueId] }) {
+                      nodes {
+                        id
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+            const itemData = await github.graphql(queryItem, { projectId: project.id, issueId: issueId });
+            const itemId = itemData.node.items.nodes[0].id;
+            
+            // 7. Actualizar el campo con la opción seleccionada
+            const mutationUpdate = `
+              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $projectId,
+                  itemId: $itemId,
+                  fieldId: $fieldId,
+                  value: { singleSelectOptionId: $optionId }
+                }) {
+                  clientMutationId
+                }
+              }
+            `;
+            await github.graphql(mutationUpdate, {
+              projectId: project.id,
+              itemId: itemId,
+              fieldId: field.id,
+              optionId: option.id
+            });
+            
+            console.log(`Campo "Nivel" actualizado a "${nivel}" en el Project.`);
 
       - name: Crear relación con padre (comentario + etiqueta)
-        if: env.PADRE != '' && env.NIVEL != 'Épica'
+        if: env.PADRE != '' && env.NIVEL != 'Epica'
         uses: actions/github-script@v6
         with:
           script: |
             const issue = context.issue;
             const padre = parseInt(process.env.PADRE);
             
-            // Verificar que el padre existe
             try {
               await github.rest.issues.get({
                 owner: issue.owner,
@@ -100,7 +172,6 @@ jobs:
                 issue_number: padre
               });
               
-              // Comentario de relación
               await github.rest.issues.createComment({
                 owner: issue.owner,
                 repo: issue.repo,
@@ -108,7 +179,6 @@ jobs:
                 body: `🔗 Este item pertenece al Issue padre #${padre}`
               });
               
-              // Etiqueta para identificar al padre (opcional)
               await github.rest.issues.addLabels({
                 owner: issue.owner,
                 repo: issue.repo,
