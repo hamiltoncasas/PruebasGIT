@@ -1,0 +1,40 @@
+name: "Nuevo Item Jerárquico"
+description: "Crea un item con su nivel y relación"
+title: "[Nivel] - Título"
+labels: ["needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Selecciona el nivel y el padre (si aplica)
+
+  - type: dropdown
+    id: nivel
+    attributes:
+      label: "Nivel"
+      description: "Elige el tipo de item"
+      options:
+        - Epica
+        - Feature
+        - Historia De Usuario
+        - Tarea
+        - Bug
+    validations:
+      required: true
+
+  - type: input
+    id: padre
+    attributes:
+      label: "Issue superior (número)"
+      description: "Si no es Épica, indica el número del Issue padre (ej: 42). Solo Épica puede dejarlo vacío."
+      placeholder: "42"
+    validations:
+      required: false
+
+  - type: textarea
+    id: descripcion
+    attributes:
+      label: "Descripción"
+      description: "Detalla el contenido"
+    validations:
+      required: true

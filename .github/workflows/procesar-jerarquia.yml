@@ -1,0 +1,125 @@
+name: Procesar Jerarquía de Issue
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  procesar:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      projects: write
+    steps:
+      - name: Obtener datos del formulario
+        id: datos
+        run: |
+          BODY="${{ github.event.issue.body }}"
+          
+          # Extraer nivel (exactamente el texto seleccionado: Épica, Feature, etc.)
+          NIVEL=$(echo "$BODY" | grep -A1 "### Nivel" | tail -n1 | xargs)
+          # Extraer número de padre
+          PADRE=$(echo "$BODY" | grep -A1 "### Issue superior" | tail -n1 | xargs)
+          
+          echo "NIVEL=$NIVEL" >> $GITHUB_ENV
+          echo "PADRE=$PADRE" >> $GITHUB_ENV
+
+      - name: Asignar etiqueta según nivel (Tarea y Bug comparten nivel pero etiqueta distinta)
+        run: |
+          case "${{ env.NIVEL }}" in
+            "Epica")
+              LABEL="epic"
+              ;;
+            "Feature")
+              LABEL="feature"
+              ;;
+            "Historia De Usuario")
+              LABEL="user-story"
+              ;;
+            "Tarea")
+              LABEL="task"
+              ;;
+            "Bug")
+              LABEL="bug"
+              ;;
+            *)
+              LABEL="sin-nivel"
+              ;;
+          esac
+          echo "LABEL=$LABEL" >> $GITHUB_ENV
+
+      - name: Agregar etiqueta
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.issue;
+            await github.rest.issues.addLabels({
+              owner: issue.owner,
+              repo: issue.repo,
+              issue_number: issue.number,
+              labels: [process.env.LABEL]
+            });
+
+      # Opcional: Si quieres asignar también un campo numérico de nivel (1-4) para ordenar
+      - name: Calcular nivel numérico (opcional)
+        id: nivel_num
+        run: |
+          case "${{ env.NIVEL }}" in
+            "Epica")
+              echo "NUM=1" >> $GITHUB_ENV
+              ;;
+            "Feature")
+              echo "NUM=2" >> $GITHUB_ENV
+              ;;
+            "Historia De Usuario")
+              echo "NUM=3" >> $GITHUB_ENV
+              ;;
+            "Tarea"|"Bug")
+              echo "NUM=4" >> $GITHUB_ENV
+              ;;
+          esac
+
+      # Si quieres actualizar el campo "Nivel" en tu Project (usando la API REST o GraphQL),
+      # aquí iría el código para hacerlo. Como es complejo, lo dejamos comentado.
+      # Pero puedes usar la etiqueta para agrupar en el Project.
+
+      - name: Crear relación con padre (comentario + etiqueta)
+        if: env.PADRE != '' && env.NIVEL != 'Épica'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.issue;
+            const padre = parseInt(process.env.PADRE);
+            
+            // Verificar que el padre existe
+            try {
+              await github.rest.issues.get({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: padre
+              });
+              
+              // Comentario de relación
+              await github.rest.issues.createComment({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                body: `🔗 Este item pertenece al Issue padre #${padre}`
+              });
+              
+              // Etiqueta para identificar al padre (opcional)
+              await github.rest.issues.addLabels({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                labels: [`parent-${padre}`]
+              });
+            } catch (e) {
+              await github.rest.issues.createComment({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                body: `⚠️ No se encontró el Issue padre #${padre}. Verifica el número.`
+              });
+            }
