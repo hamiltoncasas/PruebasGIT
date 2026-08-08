@@ -285,23 +285,10 @@ jobs:
                 }
               }
             `;
-            await gql(mutationAdd, { projectId: project.id, issueId: issueId });
-
-            const queryItem = `
-              query($projectId: ID!, $issueId: ID!) {
-                node(id: $projectId) {
-                  ... on ProjectV2 {
-                    items(first: 1, filter: { contentIds: [$issueId] }) {
-                      nodes {
-                        id
-                      }
-                    }
-                  }
-                }
-              }
-            `;
-            const itemData = await gql(queryItem, { projectId: project.id, issueId: issueId });
-            const itemId = itemData.node.items.nodes[0].id;
+            // La mutación ya devuelve el id del ítem agregado al Project.
+            const added = await gql(mutationAdd, { projectId: project.id, issueId: issueId });
+            const itemId = added.addProjectV2ItemById.item.id;
+            console.log('Item agregado al Project con id:', itemId);
 
             const mutationUpdate = `
               mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
