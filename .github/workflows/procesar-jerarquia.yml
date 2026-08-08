@@ -15,10 +15,18 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
+      - name: Guardar body del issue en archivo
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = context.payload.issue.body || '';
+            fs.writeFileSync('/tmp/issue_body.txt', body, 'utf8');
+
       - name: Obtener datos del formulario
         id: datos
         run: |
-          echo '${{ github.event.issue.body }}' | python3 .github/scripts/procesar_formulario.py >> $GITHUB_ENV
+          python3 .github/scripts/procesar_formulario.py < /tmp/issue_body.txt >> $GITHUB_ENV
 
       - name: Asignar etiqueta según nivel
         run: |

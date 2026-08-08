@@ -34,15 +34,6 @@ body:
     validations:
       required: false
 
-  - type: input
-    id: assignees
-    attributes:
-      label: "Assignees"
-      description: "Escribe los usuarios responsables separados por coma (ej: @usuario1, @usuario2)"
-      placeholder: "Ej: @usuario1, @usuario2"
-    validations:
-      required: false
-
   - type: dropdown
     id: status
     attributes:

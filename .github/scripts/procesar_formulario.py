@@ -35,7 +35,6 @@ expected = {
     'nivel': 'Nivel',
     'numero del issue superior': 'Número del Issue superior',
     'numero del issue superior padre': 'Número del Issue superior',
-    'assignees': 'Assignees',
     'status': 'Status',
     'fecha previsto inicio': 'Fecha Previsto Inicio',
     'fecha previsto fin': 'Fecha Previsto Fin',
@@ -79,7 +78,6 @@ if nivel_normalizado == 'epica' and values['Número del Issue superior']:
 
 print(f"NIVEL={values['Nivel']}")
 print(f"PADRE={values['Número del Issue superior']}")
-print(f"ASSIGNEES={values['Assignees']}")
 print(f"STATUS={values['Status']}")
 print(f"FECHA_PREVISTO_INICIO={values['Fecha Previsto Inicio']}")
 print(f"FECHA_PREVISTO_FIN={values['Fecha Previsto Fin']}")
