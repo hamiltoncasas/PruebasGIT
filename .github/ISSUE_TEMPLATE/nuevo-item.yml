@@ -6,29 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        ## Selecciona el nivel y el padre (si aplica)
-        > **Importante:** Solo los items que NO son Epica necesitan un padre.
-        > **Jerarquía:** Epica > Feature > Historia De Usuario > Tarea (Bug está al mismo nivel que Tarea).
-        >
-        > **¿Cómo elegir el padre?** En el campo **"Padre"** cada opción
-        > muestra el nivel entre paréntesis: `(Epica) #1 - Título`,
-        > `(Feature) #2 - Título`, `(Historia De Usuario) #3 - Título`.
-        > Elige **solo** la opción cuyo nivel sea el **inmediatamente superior** al tuyo:
-        > - **Feature** → elige una opción `(Epica)`
-        > - **Historia De Usuario** → elige una opción `(Feature)`
-        > - **Tarea o Bug** → elige una opción `(Historia De Usuario)`
-        > - **Epica** → deja el padre vacío
-        >
-        > ⚠️ El formulario de GitHub no permite listas dinámicas: debes
-        > **crear primero el nivel superior** para que aparezca en la lista.
-        > La lista se actualiza automáticamente con cada issue creado.
-        >
-        > 💡 **Alternativa recomendada:** Si tu repositorio tiene habilitada la
-        > función "Sub-issues" (Settings → General → Issues), al crear el issue
-        > verás en el panel derecho el campo **Parent issue**, que es un buscador
-        > dinámico. Puedes usarlo en lugar del combobox de abajo si prefieres.
-        >
-        > El título del issue es obligatorio y debe reemplazar el placeholder.
+        ## Jerarquía: Epica > Feature > Historia De Usuario > Tarea
+        Elige padre **solo** en el nivel superior: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia).
 
   - type: dropdown
     id: nivel
@@ -48,35 +27,9 @@ body:
     id: padre
     attributes:
       label: "Padre"
-      description: "Selecciona el issue superior (su nivel aparece entre paréntesis). Aparece en la lista al crear primero el superior."
+      description: "Issue superior (su nivel va entre paréntesis). Crea primero el superior."
       options:
-<<<<<<< HEAD
-        - '#13 - Epica 1'
-    validations:
-      required: false
-
-  - type: dropdown
-    id: padre_feature
-    attributes:
-      label: "Padre (Feature)"
-      description: "Para nivel Historia De Usuario. Elige el Feature superior."
-      options:
-        - '#14 - ID0001'
-        - '#12 - ID0001'
-        - '#11 - TASK 5'
-    validations:
-      required: false
-
-  - type: dropdown
-    id: padre_historia
-    attributes:
-      label: "Padre (Historia de Usuario)"
-      description: "Para nivel Tarea o Bug. Elige la Historia de Usuario superior."
-      options:
-        - '#15 - HUS 02'
-=======
-        - "(Sin padres creados aún. Crea primero el nivel superior para que aparezca aquí.)"
->>>>>>> 06e4def5ea (Un solo selector de padre con nivel indicado; la lista se sincroniza automaticamente con los issues existentes)
+        - "(Sin padres creados aún. Crea primero el nivel superior.)"
     validations:
       required: false
 
