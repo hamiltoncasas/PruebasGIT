@@ -204,21 +204,33 @@ jobs:
             }
 
             // 6) Eliminar los issues del repositorio.
-            // github.rest.issues.delete NO es función en github-script y fetch con
-            // Bearer del GITHUB_TOKEN da 404; la forma correcta es github.request
-            // con método DELETE (ruta del Octokit de GitHub).
+            // IMPORTANTE: la API DELETE /repos/{owner}/{repo}/issues/{issue_number}
+            // SOLO funciona con un PAT de USUARIO (scope "repo"). El GITHUB_TOKEN
+            // de la app de Actions NO tiene permiso para borrar issues y responde
+            // 404. Por eso usamos el token del env (GH_PAT si está configurado;
+            // si no, GH_TOKEN_GQL = GITHUB_TOKEN y fallará con 404).
+            const tokenBorrado = process.env.GH_TOKEN_GQL;
             let okIssues = 0, errIssues = 0;
             for (const num of numerosIssues) {
               try {
                 await github.request('DELETE /repos/{owner}/{repo}/issues/{issue_number}', {
                   owner, repo, issue_number: num,
-                  headers: { 'X-GitHub-Api-Version': '2022-11-28' }
+                  headers: {
+                    authorization: `token ${tokenBorrado}`,
+                    'X-GitHub-Api-Version': '2022-11-28'
+                  }
                 });
                 okIssues++;
                 console.log(`🗑️ Issue #${num} eliminado del repositorio`);
               } catch (e) {
+                if (e.status === 404) {
+                  console.log(`❌ Issue #${num}: 404. El token actual no puede borrar issues.`);
+                  console.log(`   👉 Configura el secret GH_PAT con un PAT (scope: repo) en Settings → Secrets → Actions.`);
+                  console.log(`   👉 O vincúlate: los GITHUB_TOKEN de Actions no eliminan issues (restricción de GitHub).`);
+                } else {
+                  console.log(`❌ Error eliminando issue #${num}: ${e.status} ${e.message}`);
+                }
                 errIssues++;
-                console.log(`❌ Error eliminando issue #${num}: ${e.status} ${e.message}`);
               }
             }
 
