@@ -134,17 +134,23 @@ jobs:
               return items;
             };
 
-            // 4) Recopilar items de todos los proyectos y números de issue
+            // 4) Recopilar items de todos los proyectos y números de issue.
+            // IMPORTANTE: el mismo proyecto puede aparecer [repo] y [usuario] con el
+            // MISMO id -> sus items están duplicados. Deduplicamos por itemId.
             const todosLosItems = [];      // { projectId, itemId, issueNumber }
             const numerosIssues = new Set();
+            const itemIdsVistos = new Set();
             for (const p of projects) {
               const items = await listarItems(p.id);
               console.log(`Project "${p.title}" (${p.origen}): ${items.length} items`);
               for (const it of items) {
+                if (itemIdsVistos.has(it.itemId)) continue; // ya procesado en otro project duplicado
+                itemIdsVistos.add(it.itemId);
                 todosLosItems.push({ projectId: p.id, ...it });
                 if (it.issueNumber) numerosIssues.add(it.issueNumber);
               }
             }
+            console.log(`Items únicos tras deduplicar: ${todosLosItems.length}`);
 
             // 4b) SIEMPRE listar TODOS los issues abiertos del repositorio
             // (la limpieza del Project puede dar 0 si los issues están en otro lado,
@@ -197,30 +203,22 @@ jobs:
               }
             }
 
-            // 6) Eliminar los issues del repositorio (API REST directa con fetch)
-            const REST_URL = `https://api.github.com/repos/${owner}/${repo}/issues`;
-            const delIssue = async (num) => {
-              const res = await fetch(`${REST_URL}/${num}`, {
-                method: 'DELETE',
-                headers: {
-                  'Authorization': 'Bearer ' + process.env.GH_TOKEN_GQL,
-                  'Accept': 'application/vnd.github+json'
-                }
-              });
-              if (res.status !== 204) {
-                const txt = await res.text().catch(() => '');
-                throw new Error(`HTTP ${res.status}: ${txt.slice(0, 300)}`);
-              }
-            };
+            // 6) Eliminar los issues del repositorio.
+            // github.rest.issues.delete NO es función en github-script y fetch con
+            // Bearer del GITHUB_TOKEN da 404; la forma correcta es github.request
+            // con método DELETE (ruta del Octokit de GitHub).
             let okIssues = 0, errIssues = 0;
             for (const num of numerosIssues) {
               try {
-                await delIssue(num);
+                await github.request('DELETE /repos/{owner}/{repo}/issues/{issue_number}', {
+                  owner, repo, issue_number: num,
+                  headers: { 'X-GitHub-Api-Version': '2022-11-28' }
+                });
                 okIssues++;
                 console.log(`🗑️ Issue #${num} eliminado del repositorio`);
               } catch (e) {
                 errIssues++;
-                console.log(`❌ Error eliminando issue #${num}: ${e.message}`);
+                console.log(`❌ Error eliminando issue #${num}: ${e.status} ${e.message}`);
               }
             }
 
