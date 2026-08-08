@@ -39,9 +39,12 @@ jobs:
               'nivel': 'Nivel',
               'status': 'Status',
               'fecha previsto inicio': 'Fecha Previsto Inicio',
+              'fecha prevista inicio': 'Fecha Previsto Inicio',
               'fecha previsto fin': 'Fecha Previsto Fin',
+              'fecha prevista fin': 'Fecha Previsto Fin',
               'fecha real inicio': 'Fecha Real Inicio',
               'fecha real final': 'Fecha Real Final',
+              'fecha real fin': 'Fecha Real Final',
               'descripcion': 'Descripción'
             };
 
@@ -328,29 +331,51 @@ jobs:
               console.log(`  - [${x.__typename || '?'}] "${x.name}" (${x.id})`);
             }
 
-            // Función de coincidencia por nombre (normalizado) o keywords
+            // Función de coincidencia por nombre (normalizado flexible).
+            // "previsto" == "prevista" -> se normalizan a "previs"
             const camposProj = project.fields.nodes;
             const norm = (s) => (s || '')
               .normalize('NFD')
               .replace(/[\u0300-\u036f]/g, '')
+              .replace(/previst[oa]/gi, 'previs')
               .replace(/[^a-z0-9]/gi, '')
               .toLowerCase();
             const buscarCampo = (nombres) => {
               for (const n of nombres) {
-                const encontrado = camposProj.find(x => norm(x.name) === norm(n));
+                const buscado = norm(n);
+                // 1) coincidencia exacta normalizada
+                let encontrado = camposProj.find(x => norm(x.name) === buscado);
+                // 2) el nombre del Project contiene el nombre buscado (o viceversa)
+                if (!encontrado) encontrado = camposProj.find(x => norm(x.name).includes(buscado));
+                if (!encontrado) encontrado = camposProj.find(x => buscado.includes(norm(x.name)));
                 if (encontrado) return encontrado;
               }
               return null;
+            };
+            // Un campo es de fecha si su nombre contiene "fecha"/"date"
+            const esCampoFecha = (campo) => /fecha|date/i.test(campo.name || '');
+
+            // Función que actualiza con value correcto: fecha -> { date }, texto -> { text }
+            const actualizarConFallback = async (campo, val) => {
+              if (esCampoFecha(campo)) {
+                try {
+                  await actualizarCampo(campo.id, { date: val });
+                  return;
+                } catch (eF) {
+                  console.log(`  (date falló para "${campo.name}": ${eF.message.split('\n')[0]}) -> intento text`);
+                }
+              }
+              await actualizarCampo(campo.id, { text: val });
             };
 
             // 3) Actualizar los 4 campos de fecha (por nombre exacto o alternativas)
             const fechas = [
               {
-                nombres: ['Fecha Previsto Inicio', 'Previsto Inicio'],
+                nombres: ['Fecha Previsto Inicio', 'Fecha Prevista Inicio', 'Previsto Inicio', 'Prevista Inicio'],
                 valor: process.env.FECHA_PREVISTO_INICIO
               },
               {
-                nombres: ['Fecha Previsto Fin', 'Previsto Fin'],
+                nombres: ['Fecha Previsto Fin', 'Fecha Prevista Fin', 'Previsto Fin', 'Prevista Fin'],
                 valor: process.env.FECHA_PREVISTO_FIN
               },
               {
@@ -374,10 +399,9 @@ jobs:
                 continue;
               }
               try {
-                const esFecha = (campo.__typename || '').includes('Date');
-                await actualizarCampo(campo.id, esFecha ? { date: val } : { text: val });
+                await actualizarConFallback(campo, val);
                 console.log(`✅ Campo "${campo.name}" actualizado a "${val}" en el Project.`);
               } catch (e) {
-                console.log(`❌ Error actualizando "${campo.name}" (${campo.__typename}): ${e.message}`);
+                console.log(`❌ Error actualizando "${campo.name}": ${e.message}`);
               }
             }
