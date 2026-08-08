@@ -1,4 +1,4 @@
-﻿name: "Nuevo Item Jerárquico"
+name: "Nuevo Item Jerárquico"
 description: "Crea un item con su nivel y relación padre-hijo"
 title: "[Nivel] - Título"
 labels: ["needs-triage"]
@@ -41,7 +41,7 @@ body:
       label: "Padre (Epica)"
       description: "Para nivel Feature. Elige la Epica superior."
       options:
-        - '(Sincronizando opciones... ejecuta el workflow para poblar o crea la Epica primero)'
+        - '#13 - Epica 1'
     validations:
       required: false
 
@@ -51,7 +51,9 @@ body:
       label: "Padre (Feature)"
       description: "Para nivel Historia De Usuario. Elige el Feature superior."
       options:
-        - '(Sincronizando opciones... ejecuta el workflow para poblar o crea el Feature primero)'
+        - '#14 - ID0001'
+        - '#12 - ID0001'
+        - '#11 - TASK 5'
     validations:
       required: false
 
@@ -61,7 +63,7 @@ body:
       label: "Padre (Historia de Usuario)"
       description: "Para nivel Tarea o Bug. Elige la Historia de Usuario superior."
       options:
-        - '(Sincronizando opciones... ejecuta el workflow para poblar o crea la Historia primero)'
+        - '#15 - HUS 02'
     validations:
       required: false
 
