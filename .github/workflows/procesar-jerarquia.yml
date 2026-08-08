@@ -135,6 +135,15 @@ jobs:
               labels: [process.env.LABEL]
             });
 
+      - name: Diagnosticar token y proyecto
+        run: |
+          if [ -n "${{ secrets.GH_PAT }}" ]; then
+            echo "TOKEN_PROJECT=PAT (secret GH_PAT configurado)"
+          else
+            echo "TOKEN_PROJECT=GITHUB_TOKEN (sin GH_PAT; solo ve Projects vinculados al repo)"
+          fi
+          echo "Project v2 debe estar VINCULADO al repo o usar GH_PAT."
+
       - name: Actualizar campo "Nivel" en Project v2
         uses: actions/github-script@v7
         env:
@@ -230,7 +239,12 @@ jobs:
               if (f) { project = p; break; }
             }
             if (!project) {
-              throw new Error(`No se encontró un Project v2 con campo "Nivel". Proyectos revisados: ${proyectos.map(p => p.title).join(', ') || 'ninguno'}`);
+              throw new Error(
+                `No se encontró un Project v2 con campo "Nivel".\n` +
+                `- Proyectos revisados: ${proyectos.map(p => p.title).join(', ') || 'ninguno (sin acceso a proyectos de usuario sin GH_PAT)'}\n\n` +
+                `SOLUCIÓN: 1) Vincula tu Project v2 al repositorio (project → Settings → Linked repository → ${owner}/${repo}), o\n` +
+                `2) Configura el secret GH_PAT en Settings → Secrets → Actions con permisos repo+project.`
+              );
             }
             console.log('Project v2 encontrado:', project.title);
 
