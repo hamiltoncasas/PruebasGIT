@@ -44,6 +44,7 @@ jobs:
           fi
 
           echo "LABEL=$LABEL" >> $GITHUB_ENV
+          echo "NIVEL_NORMALIZADO=$NIVEL_NORMALIZADO" >> $GITHUB_ENV
 
       - name: Agregar etiqueta al Issue
         uses: actions/github-script@v7
@@ -150,7 +151,7 @@ jobs:
             console.log(`Campo "Nivel" actualizado a "${nivel}" en el Project.`);
 
       - name: Crear relación con padre (comentario + etiqueta)
-        if: env.PADRE != '' && toLower(env.NIVEL) != 'epica'
+        if: env.PADRE != '' && env.NIVEL_NORMALIZADO != 'epica'
         uses: actions/github-script@v7
         with:
           script: |
