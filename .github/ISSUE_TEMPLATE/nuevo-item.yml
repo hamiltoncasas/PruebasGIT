@@ -34,14 +34,6 @@ body:
     validations:
       required: false
 
-  - type: assignees
-    id: assignees
-    attributes:
-      label: "Assignees"
-      description: "Asigna uno o varios responsables al issue."
-    validations:
-      required: false
-
   - type: dropdown
     id: status
     attributes:
