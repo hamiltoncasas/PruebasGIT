@@ -1,5 +1,5 @@
 name: "Nuevo Item Jerárquico"
-description: "Crea un item con su nivel y relación padre-hijo"
+description: "Crea un item con su nivel"
 title: "[Nivel] - Título"
 labels: ["needs-triage"]
 body:
@@ -7,9 +7,7 @@ body:
     attributes:
       value: |
         ## Jerarquía: Epica > Feature > Historia De Usuario > Tarea
-
-        ### ➜ [✨ ABRIR CREADOR VISUAL CON FILTRADO AUTOMÁTICO DEL PADRE](https://hamiltoncasas.github.io/PruebasGIT/crear-item.html)
-        > _Seleccionas el Nivel y el campo Padre se llena solo con el nivel inmediatamente superior._
+        Completa el formulario y asigna un responsable en el campo "Assignees" (panel derecho).
 
   - type: dropdown
     id: nivel
@@ -24,20 +22,6 @@ body:
         - Bug
     validations:
       required: true
-
-  - type: dropdown
-    id: padre
-    attributes:
-      label: "Padre"
-      description: "Issue superior. Las opciones muestran el nivel entre paréntesis. Elegir solo el inmediatamente superior: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia)"
-      options:
-        - '(Epica) #13 - Epica 1'
-        - '(Feature) #14 - ID0001'
-        - '(Feature) #12 - ID0001'
-        - '(Feature) #11 - TASK 5'
-        - '(Historia De Usuario) #15 - HUS 02'
-    validations:
-      required: false
 
   - type: dropdown
     id: status

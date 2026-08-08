@@ -3,30 +3,21 @@ Uso para pruebas iniciales
 
 ## 🌿 Gestión de Items Jerárquicos
 
-El repositorio incluye un sistema para crear issues con jerarquía:
+El repositorio incluye un sistema para crear issues jerárquicos:
 
 **Epica > Feature > Historia De Usuario > Tarea**
 (Bug está al mismo nivel que Tarea)
 
-### ➜ [✨ ABRIR CREADOR VISUAL CON FILTRADO AUTOMÁTICO DEL PADRE](https://hamiltoncasas.github.io/PruebasGIT/crear-item.html)
+### 📝 Formulario de creación de issues
+Al crear un issue se usa el formulario **"Nuevo Item Jerárquico"**, que incluye:
 
-Al seleccionar el **Nivel**, el campo **Padre** se llena automáticamente **solo con los issues del nivel inmediatamente superior**:
-- **Feature** → solo Epicas
-- **Historia De Usuario** → solo Features
-- **Tarea / Bug** → solo Historias de Usuario
-- **Epica** → sin padre
+- **Nivel** (combobox): Epica, Feature, Historia De Usuario, Tarea, Bug
+- **Status** (combobox): Nuevo, En Progreso, En Revisión, Completado
+- **Fechas**: Previsto Inicio/Fin y Real Inicio/Fin (formato `AAAA-MM-DD`)
+- **Descripción**: detalle del item
+- **Assignees**: el campo nativo de asignación de responsables (ya viene por defecto en GitHub)
 
-La app consulta los issues abiertos en tiempo real y abre el formulario de GitHub pre-llenado en la misma pestaña.
-
-> **Importante (GitHub Pages):** el creador visual vive en `.github/crear-item.html` y se publica automáticamente vía GitHub Actions (`deploy-pages.yml`) cuando se suben cambios. Para que funcione la URL, habilita GitHub Pages en el repositorio:
-> **Settings → Pages → Source: "GitHub Actions"** (seleccionar Actions como proveedor).
-> La URL será `https://<tu-usuario>.github.io/PruebasGIT/crear-item.html`
-
-### 🗂️ Formulario nativo de GitHub
-También se puede usar el formulario estándar de issues ("Nuevo Item Jerárquico"), que incluye un dropdown **Padre** cuyas opciones muestran el nivel entre paréntesis:
-`(Epica) #13 - Título`, `(Feature) #12 - Título`, `(Historia De Usuario) #15 - Título`.
+> **Nota:** los campos de fecha son de texto con formato `AAAA-MM-DD` porque GitHub Issue Forms no tiene un selector de fecha nativo (usar `type: date` invalida el formulario).
 
 ### 🤖 Automatizaciones (GitHub Actions)
-- **Procesar Jerarquía de Issue**: al abrir un issue, asigna etiqueta según nivel, valida el padre, crea la relación `parent-N`, y agrega al Project v2 el issue **y todos los issues que estén por encima**.
-- **Sincronizar Plantilla de Items**: actualiza automáticamente las opciones del dropdown "Padre" con los issues existentes (se ejecuta con cada push o cambio de issues).
-- **Deploy GitHub Pages**: publica el creador visual de `.github/crear-item.html` en el sitio.
+- **Procesar Jerarquía de Issue**: al abrir un issue, extrae los datos del formulario, asigna la etiqueta según el nivel (`epic`, `feature`, `user-story`, `task`, `bug`) y actualiza el campo **Nivel** en el Project v2.
