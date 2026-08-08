@@ -2,6 +2,19 @@ name: Importar Issues desde CSV
 
 on:
   workflow_dispatch:
+    inputs:
+      archivo_csv:
+        description: 'Ruta del archivo CSV a importar (en la raíz del repo)'
+        required: false
+        default: 'Proyecto Avances GIT - Tabla Nivel 2.csv'
+      forzar:
+        description: 'Forzar creación aunque el título ya exista (true/false)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   issues: write
@@ -14,15 +27,26 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
+      - name: Mostrar archivos CSV disponibles
+        run: |
+          echo "Archivos CSV en la raíz del repositorio:"
+          ls -1 *.csv 2>/dev/null || echo "(No hay archivos .csv en la raíz)"
+          echo ""
+          echo "Archivo a importar: ${{ inputs.archivo_csv }}"
+
       - name: Crear issues desde el CSV respetando la jerarquia
         uses: actions/github-script@v7
+        env:
+          CSV_ARCHIVO: ${{ inputs.archivo_csv || 'Proyecto Avances GIT - Tabla Nivel 2.csv' }}
+          FORZAR: ${{ inputs.forzar }}
         with:
           script: |
             const fs = require('fs');
             const { owner, repo } = context.repo;
 
-            // Configuración
-            const CSV_PATH = 'Proyecto Avances GIT - Tabla Nivel 2.csv';
+            // Configuración (archivo elegido al ejecutar el workflow)
+            const CSV_PATH = process.env.CSV_ARCHIVO || 'Proyecto Avances GIT - Tabla Nivel 2.csv';
+            const FORZAR = (process.env.FORZAR || 'false').toLowerCase() === 'true';
             const JERARQUIA_ORDEN = {
               'epica': 0,
               'feature': 1,
@@ -125,9 +149,9 @@ jobs:
               const nivelNorm = normalize(f.nivel);
               const tituloLimpio = f.title.trim();
 
-              // 1) Saltar si ya existe con ese título
+              // 1) Saltar si ya existe con ese título (excepto si forzar=true)
               const clave = normalize(tituloLimpio);
-              if (titulosExistentes.has(clave) || numeroPorTitulo.has(clave)) {
+              if (!FORZAR && (titulosExistentes.has(clave) || numeroPorTitulo.has(clave))) {
                 omitidos.push({ titulo: tituloLimpio, motivo: 'ya existe' });
                 continue;
               }
@@ -188,6 +212,8 @@ jobs:
             }
 
             console.log('\n--- Resumen ---');
+            console.log(`Archivo importado: ${CSV_PATH}`);
+            console.log(`Forzar creación de existentes: ${FORZAR}`);
             console.log(`Creados: ${creados.length}`);
             console.log(`Omitidos (ya existian): ${omitidos.length}`);
             console.log(`Errores: ${errores}`);
