@@ -37,9 +37,7 @@ jobs:
             // Mapeo de headings normalizados -> etiquetas de salida
             const expected = {
               'nivel': 'Nivel',
-              'padre epica': 'Padre (Epica)',
-              'padre feature': 'Padre (Feature)',
-              'padre historia de usuario': 'Padre (Historia de Usuario)',
+              'padre': 'Padre',
               'status': 'Status',
               'fecha previsto inicio': 'Fecha Previsto Inicio',
               'fecha previsto fin': 'Fecha Previsto Fin',
@@ -90,9 +88,7 @@ jobs:
             // Escribir las variables a GITHUB_ENV para los pasos siguientes
             const envLines = [
               `NIVEL=${values['Nivel']}`,
-              `PADRE_EPICA=${values['Padre (Epica)']}`,
-              `PADRE_FEATURE=${values['Padre (Feature)']}`,
-              `PADRE_HISTORIA=${values['Padre (Historia de Usuario)']}`,
+              `PADRE=${values['Padre']}`,
               `STATUS=${values['Status']}`,
               `FECHA_PREVISTO_INICIO=${values['Fecha Previsto Inicio']}`,
               `FECHA_PREVISTO_FIN=${values['Fecha Previsto Fin']}`,
@@ -141,50 +137,28 @@ jobs:
               labels: [process.env.LABEL]
             });
 
-      - name: Determinar padre según nivel y obtener issues superiores
+      - name: Obtener padre y issues superiores (cadena de ancestros)
         id: jerarquia
         uses: actions/github-script@v7
         env:
-          NIVEL: ${{ env.NIVEL }}
-          PADRE_EPICA: ${{ env.PADRE_EPICA }}
-          PADRE_FEATURE: ${{ env.PADRE_FEATURE }}
-          PADRE_HISTORIA: ${{ env.PADRE_HISTORIA }}
+          PADRE: ${{ env.PADRE }}
         with:
           script: |
             const fs = require('fs');
             const path = require('path');
             const { owner, repo, number } = context.issue;
 
-            const normalize = text => (text || '')
-              .normalize('NFD')
-              .replace(/[\u0300-\u036f]/g, '')
-              .trim()
-              .toLowerCase();
-
-            const nivel = normalize(process.env.NIVEL);
-
-            // Determinar qué dropdown de padre corresponde según el nivel
-            let padreMapeo = '';
-            if (nivel === 'epica') {
-              padreMapeo = '';
-            } else if (nivel === 'feature') {
-              padreMapeo = process.env.PADRE_EPICA || '';
-            } else if (nivel === 'historia de usuario') {
-              padreMapeo = process.env.PADRE_FEATURE || '';
-            } else if (nivel === 'tarea' || nivel === 'bug') {
-              // Tarea y Bug están al mismo nivel: su padre es una Historia de Usuario
-              padreMapeo = process.env.PADRE_HISTORIA || '';
-            }
-
-            // El valor del dropdown tiene la forma "#42 - Título" -> extraer el número
+            // El valor del dropdown tiene la forma "(Epica) #42 - Título".
+            // Extraemos el número del issue padre.
+            const padreRaw = (process.env.PADRE || '').trim();
             let padre = '';
-            if (padreMapeo) {
-              const m = padreMapeo.match(/#(\d+)/);
+            if (padreRaw) {
+              const m = padreRaw.match(/#(\d+)/);
               padre = m ? m[1] : '';
             }
 
             fs.appendFileSync(process.env.GITHUB_ENV, `PADRE=${padre}\n`);
-            console.log('Nivel:', process.env.NIVEL, '-> Padre seleccionado:', padre || 'ninguno');
+            console.log('Padre seleccionado:', padre || 'ninguno');
 
             // Función para extraer el valor de un campo del body del formulario
             const extractField = (body, fieldName) => {
@@ -236,13 +210,17 @@ jobs:
                   }
                   return '';
                 };
-                // Nuevo formulario (dropdowns)
-                let padreBody = extractMulti([
-                  'Padre (Epica)',
-                  'Padre (Feature)',
-                  'Padre (Historia de Usuario)'
-                ]);
-                // Formulario antiguo
+                // Formulario actual (dropdown "Padre")
+                let padreBody = extractField(body, 'Padre');
+                // Formulario anterior con varios selectores
+                if (!padreBody) {
+                  padreBody = extractMulti([
+                    'Padre (Epica)',
+                    'Padre (Feature)',
+                    'Padre (Historia de Usuario)'
+                  ]);
+                }
+                // Formulario más antiguo (campo manual)
                 if (!padreBody) {
                   padreBody = extractMulti([
                     'Número del Issue superior (padre)',
@@ -287,6 +265,7 @@ jobs:
             const nivel = normalize(process.env.NIVEL || '');
             const padre = (process.env.PADRE || '').trim();
 
+            // Jerarquía: Epica > Feature > Historia De Usuario > Tarea (Bug al mismo nivel que Tarea)
             const expectedParent = {
               'feature': 'epica',
               'historia de usuario': 'feature',
@@ -295,7 +274,7 @@ jobs:
             };
 
             if (nivel !== 'epica' && !padre) {
-              throw new Error('Para este nivel es obligatorio indicar el issue padre (usa el selector "Padre" correspondiente del formulario).');
+              throw new Error('Para este nivel es obligatorio indicar el issue padre (usa el selector "Padre" del formulario).');
             }
             if (nivel === 'epica' && padre) {
               throw new Error('Un Epica no debe tener issue padre.');

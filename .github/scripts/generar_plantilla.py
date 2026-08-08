@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""Genera el contenido YAML de la plantilla 'Nuevo Item Jerárquico' poblado
-con los issues existentes de cada nivel (Epica, Feature, Historia de Usuario).
+"""Genera el contenido YAML de la plantilla 'Nuevo Item Jerárquico' con un
+único combobox "Padre" cuyas opciones muestran el nivel entre paréntesis:
+  (Epica) #1 - Título
+  (Feature) #2 - Título
+  (Historia De Usuario) #3 - Título
 
 Recibe por stdin un JSON con la forma:
 {
@@ -20,24 +23,25 @@ if hasattr(sys.stdin, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8')
 
 
-def opciones(items, vacio):
-    """Genera las líneas YAML de opciones para un dropdown (8 espacios de indentación)."""
-    if not items:
-        return ["        - '" + vacio + "'"]
+def opciones(con_nivel):
+    """Genera las líneas YAML de opciones para el dropdown 'Padre'."""
+    if not con_nivel:
+        return ["        - '(Sin padres creados aún. Crea primero el nivel superior para que aparezca aquí.)'"]
     vistos = set()
     resultado = []
-    for item in items:
-        n = item.get('number')
-        if n in vistos:
-            continue
-        vistos.add(n)
-        titulo = item.get('title') or ''
-        if len(titulo) > 80:
-            titulo = titulo[:77] + '...'
-        titulo_limpio = titulo.replace("'", "").replace('"', '')
-        resultado.append("        - '#" + str(n) + " - " + titulo_limpio + "'")
-        if len(resultado) >= 100:
-            break
+    for nivel, items in con_nivel:
+        for item in items:
+            n = item.get('number')
+            if n in vistos:
+                continue
+            vistos.add(n)
+            titulo = item.get('title') or ''
+            if len(titulo) > 70:
+                titulo = titulo[:67] + '...'
+            titulo_limpio = titulo.replace("'", "").replace('"', '')
+            resultado.append("        - '(" + nivel + ") #" + str(n) + " - " + titulo_limpio + "'")
+            if len(resultado) >= 100:
+                return resultado
     return resultado
 
 
@@ -48,18 +52,12 @@ def main():
         print('ERROR: No se pudo leer el JSON desde stdin.', file=sys.stderr)
         sys.exit(1)
 
-    epicas = opciones(
-        data.get('epicas', []),
-        '(Aún no hay Epicas. Crea una Epica primero.)'
-    )
-    features = opciones(
-        data.get('features', []),
-        '(Aún no hay Features. Crea un Feature primero.)'
-    )
-    historias = opciones(
-        data.get('historias', []),
-        '(Aún no hay Historias de Usuario. Crea una Historia primero.)'
-    )
+    con_nivel = [
+        ('Epica', data.get('epicas', [])),
+        ('Feature', data.get('features', [])),
+        ('Historia De Usuario', data.get('historias', [])),
+    ]
+    opciones_padre = opciones(con_nivel)
 
     yml = (
         'name: "Nuevo Item Jerárquico"\n'
@@ -74,14 +72,23 @@ def main():
         '        > **Importante:** Solo los items que NO son Epica necesitan un padre.\n'
         '        > **Jerarquía:** Epica > Feature > Historia De Usuario > Tarea (Bug está al mismo nivel que Tarea).\n'
         '        >\n'
-        '        > Selecciona **SOLO** el campo de padre que corresponde a tu nivel:\n'
-        '        > - **Feature** → usa **Padre (Epica)**\n'
-        '        > - **Historia De Usuario** → usa **Padre (Feature)**\n'
-        '        > - **Tarea** → usa **Padre (Historia de Usuario)**\n'
-        '        > - **Bug** → usa **Padre (Historia de Usuario)**\n'
+        '        > **¿Cómo elegir el padre?** En el campo **"Padre"** cada opción\n'
+        '        > muestra el nivel entre paréntesis: `(Epica) #1 - Título`,\n'
+        '        > `(Feature) #2 - Título`, `(Historia De Usuario) #3 - Título`.\n'
+        '        > Elige **solo** la opción cuyo nivel sea el **inmediatamente superior** al tuyo:\n'
+        '        > - **Feature** → elige una opción `(Epica)`\n'
+        '        > - **Historia De Usuario** → elige una opción `(Feature)`\n'
+        '        > - **Tarea o Bug** → elige una opción `(Historia De Usuario)`\n'
+        '        > - **Epica** → deja el padre vacío\n'
         '        >\n'
-        '        > La lista de opciones se genera automáticamente con los issues existentes\n'
-        '        > de cada nivel. Si no aparece el padre que necesitas, créalo primero.\n'
+        '        > ⚠️ El formulario de GitHub no permite listas dinámicas: debes\n'
+        '        > **crear primero el nivel superior** para que aparezca en la lista.\n'
+        '        > La lista se actualiza automáticamente con cada issue creado.\n'
+        '        >\n'
+        '        > 💡 **Alternativa recomendada:** Si tu repositorio tiene habilitada la\n'
+        '        > función "Sub-issues" (Settings → General → Issues), al crear el issue\n'
+        '        > verás en el panel derecho el campo **Parent issue**, que es un buscador\n'
+        '        > dinámico. Puedes usarlo en lugar del combobox de abajo si prefieres.\n'
         '        >\n'
         '        > El título del issue es obligatorio y debe reemplazar el placeholder.\n'
         '\n'
@@ -100,32 +107,12 @@ def main():
         '      required: true\n'
         '\n'
         '  - type: dropdown\n'
-        '    id: padre_epica\n'
+        '    id: padre\n'
         '    attributes:\n'
-        '      label: "Padre (Epica)"\n'
-        '      description: "Para nivel Feature. Elige la Epica superior."\n'
+        '      label: "Padre"\n'
+        '      description: "Selecciona el issue superior (su nivel aparece entre paréntesis). Aparece en la lista al crear primero el superior."\n'
         '      options:\n'
-        + '\n'.join(epicas) + '\n'
-        '    validations:\n'
-        '      required: false\n'
-        '\n'
-        '  - type: dropdown\n'
-        '    id: padre_feature\n'
-        '    attributes:\n'
-        '      label: "Padre (Feature)"\n'
-        '      description: "Para nivel Historia De Usuario. Elige el Feature superior."\n'
-        '      options:\n'
-        + '\n'.join(features) + '\n'
-        '    validations:\n'
-        '      required: false\n'
-        '\n'
-        '  - type: dropdown\n'
-        '    id: padre_historia\n'
-        '    attributes:\n'
-        '      label: "Padre (Historia de Usuario)"\n'
-        '      description: "Para nivel Tarea o Bug. Elige la Historia de Usuario superior."\n'
-        '      options:\n'
-        + '\n'.join(historias) + '\n'
+        + '\n'.join(opciones_padre) + '\n'
         '    validations:\n'
         '      required: false\n'
         '\n'
