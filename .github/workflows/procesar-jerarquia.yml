@@ -153,8 +153,10 @@ jobs:
                       title
                       fields(first: 20) {
                         nodes {
-                          id
-                          name
+                          ... on ProjectV2FieldCommon {
+                            id
+                            name
+                          }
                           ... on ProjectV2SingleSelectField {
                             options {
                               id
