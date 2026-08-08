@@ -1,0 +1,176 @@
+name: Procesar Jerarquía de Issue
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  procesar:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      projects: write
+    steps:
+      - name: Obtener datos del formulario
+        id: datos
+        run: |
+          BODY="${{ github.event.issue.body }}"
+          
+          NIVEL=$(echo "$BODY" | grep -A1 "### Nivel" | tail -n1 | xargs)
+          PADRE=$(echo "$BODY" | grep -A1 "### Número del Issue superior" | tail -n1 | xargs)
+          
+          echo "NIVEL=$NIVEL" >> $GITHUB_ENV
+          echo "PADRE=$PADRE" >> $GITHUB_ENV
+
+      - name: Asignar etiqueta según nivel
+        run: |
+          case "${{ env.NIVEL }}" in
+            "Epica") LABEL="epic" ;;
+            "Feature") LABEL="feature" ;;
+            "Historia De Usuario") LABEL="user-story" ;;
+            "Tarea") LABEL="task" ;;
+            "Bug") LABEL="bug" ;;
+          esac
+          echo "LABEL=$LABEL" >> $GITHUB_ENV
+
+      - name: Agregar etiqueta al Issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.issue;
+            await github.rest.issues.addLabels({
+              owner: issue.owner,
+              repo: issue.repo,
+              issue_number: issue.number,
+              labels: [process.env.LABEL]
+            });
+
+      - name: Actualizar campo "Nivel" en Project v2
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo, number } = context.issue;
+            const nivel = process.env.NIVEL;
+            
+            const queryProject = `
+              query($owner: String!, $repo: String!) {
+                repository(owner: $owner, name: $repo) {
+                  projectsV2(first: 1) {
+                    nodes {
+                      id
+                      title
+                      fields(first: 20) {
+                        nodes {
+                          id
+                          name
+                          ... on ProjectV2SingleSelectField {
+                            options {
+                              id
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+            const projectData = await github.graphql(queryProject, { owner, repo });
+            const project = projectData.repository.projectsV2.nodes[0];
+            if (!project) throw new Error("No se encontró ningún Project v2 en este repositorio.");
+            
+            const field = project.fields.nodes.find(f => f.name === "Nivel");
+            if (!field) throw new Error("No se encontró el campo 'Nivel' en el Project.");
+            
+            const option = field.options.find(o => o.name === nivel);
+            if (!option) throw new Error(`No se encontró la opción "${nivel}" en el campo 'Nivel'.`);
+            
+            const issueData = await github.rest.issues.get({ owner, repo, issue_number: number });
+            const issueId = issueData.data.node_id;
+            
+            const mutationAdd = `
+              mutation($projectId: ID!, $issueId: ID!) {
+                addProjectV2ItemById(input: { projectId: $projectId, contentId: $issueId }) {
+                  item {
+                    id
+                  }
+                }
+              }
+            `;
+            await github.graphql(mutationAdd, { projectId: project.id, issueId: issueId });
+            
+            const queryItem = `
+              query($projectId: ID!, $issueId: ID!) {
+                node(id: $projectId) {
+                  ... on ProjectV2 {
+                    items(first: 1, filter: { contentIds: [$issueId] }) {
+                      nodes {
+                        id
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+            const itemData = await github.graphql(queryItem, { projectId: project.id, issueId: issueId });
+            const itemId = itemData.node.items.nodes[0].id;
+            
+            const mutationUpdate = `
+              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $projectId,
+                  itemId: $itemId,
+                  fieldId: $fieldId,
+                  value: { singleSelectOptionId: $optionId }
+                }) {
+                  clientMutationId
+                }
+              }
+            `;
+            await github.graphql(mutationUpdate, {
+              projectId: project.id,
+              itemId: itemId,
+              fieldId: field.id,
+              optionId: option.id
+            });
+            
+            console.log(`Campo "Nivel" actualizado a "${nivel}" en el Project.`);
+
+      - name: Crear relación con padre (comentario + etiqueta)
+        if: env.PADRE != '' && env.NIVEL != 'Epica'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.issue;
+            const padre = parseInt(process.env.PADRE);
+            
+            try {
+              await github.rest.issues.get({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: padre
+              });
+              
+              await github.rest.issues.createComment({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                body: `🔗 Este item pertenece al Issue padre #${padre}`
+              });
+              
+              await github.rest.issues.addLabels({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                labels: [`parent-${padre}`]
+              });
+            } catch (e) {
+              await github.rest.issues.createComment({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                body: `⚠️ No se encontró el Issue padre #${padre}. Verifica el número.`
+              });
+            }
