@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Genera el contenido YAML de la plantilla 'Nuevo Item Jerárquico' con un
-único combobox "Padre" cuyas opciones muestran el nivel entre paréntesis:
-  (Epica) #1 - Título
-  (Feature) #2 - Título
-  (Historia De Usuario) #3 - Título
+"""Genera el contenido YAML de la plantilla 'Nuevo Item Jerárquico'.
+
+Cada nivel superior tiene SU PROPIO dropdown, que muestra SOLO los issues del
+nivel inmediatamente superior:
+  - Padre (Epica)          -> solo Epicas  (para Nivel = Feature)
+  - Padre (Feature)        -> solo Features (para Nivel = Historia De Usuario)
+  - Padre (Historia)       -> solo Historias de Usuario (para Nivel = Tarea o Bug)
 
 Recibe por stdin un JSON con la forma:
 {
@@ -23,25 +25,24 @@ if hasattr(sys.stdin, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8')
 
 
-def opciones(con_nivel):
-    """Genera las líneas YAML de opciones para el dropdown 'Padre'."""
-    if not con_nivel:
-        return ["        - '(Sin padres creados aún. Crea primero el nivel superior para que aparezca aquí.)'"]
+def opciones(items, vacio):
+    """Genera las líneas YAML de opciones para un dropdown (8 espacios de indentación)."""
+    if not items:
+        return ["        - '" + vacio + "'"]
     vistos = set()
     resultado = []
-    for nivel, items in con_nivel:
-        for item in items:
-            n = item.get('number')
-            if n in vistos:
-                continue
-            vistos.add(n)
-            titulo = item.get('title') or ''
-            if len(titulo) > 70:
-                titulo = titulo[:67] + '...'
-            titulo_limpio = titulo.replace("'", "").replace('"', '')
-            resultado.append("        - '(" + nivel + ") #" + str(n) + " - " + titulo_limpio + "'")
-            if len(resultado) >= 100:
-                return resultado
+    for item in items:
+        n = item.get('number')
+        if n in vistos:
+            continue
+        vistos.add(n)
+        titulo = item.get('title') or ''
+        if len(titulo) > 70:
+            titulo = titulo[:67] + '...'
+        titulo_limpio = titulo.replace("'", "").replace('"', '')
+        resultado.append("        - '#" + str(n) + " - " + titulo_limpio + "'")
+        if len(resultado) >= 100:
+            break
     return resultado
 
 
@@ -52,12 +53,9 @@ def main():
         print('ERROR: No se pudo leer el JSON desde stdin.', file=sys.stderr)
         sys.exit(1)
 
-    con_nivel = [
-        ('Epica', data.get('epicas', [])),
-        ('Feature', data.get('features', [])),
-        ('Historia De Usuario', data.get('historias', [])),
-    ]
-    opciones_padre = opciones(con_nivel)
+    epicas = opciones(data.get('epicas', []), '(Aún no hay Epicas. Crea una Epica primero.)')
+    features = opciones(data.get('features', []), '(Aún no hay Features. Crea un Feature primero.)')
+    historias = opciones(data.get('historias', []), '(Aún no hay Historias. Crea una Historia primero.)')
 
     yml = (
         'name: "Nuevo Item Jerárquico"\n'
@@ -69,7 +67,7 @@ def main():
         '    attributes:\n'
         '      value: |\n'
         '        ## Jerarquía: Epica > Feature > Historia De Usuario > Tarea\n'
-        '        Elige padre **solo** en el nivel superior: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia).\n'
+        '        Usa el campo Padre que corresponda: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia).\n'
         '\n'
         '  - type: dropdown\n'
         '    id: nivel\n'
@@ -86,12 +84,32 @@ def main():
         '      required: true\n'
         '\n'
         '  - type: dropdown\n'
-        '    id: padre\n'
+        '    id: padre_epica\n'
         '    attributes:\n'
-        '      label: "Padre"\n'
-        '      description: "Issue superior (su nivel va entre paréntesis). Crea primero el superior."\n'
+        '      label: "Padre (Epica)"\n'
+        '      description: "Solo si Nivel = Feature"\n'
         '      options:\n'
-        + '\n'.join(opciones_padre) + '\n'
+        + '\n'.join(epicas) + '\n'
+        '    validations:\n'
+        '      required: false\n'
+        '\n'
+        '  - type: dropdown\n'
+        '    id: padre_feature\n'
+        '    attributes:\n'
+        '      label: "Padre (Feature)"\n'
+        '      description: "Solo si Nivel = Historia De Usuario"\n'
+        '      options:\n'
+        + '\n'.join(features) + '\n'
+        '    validations:\n'
+        '      required: false\n'
+        '\n'
+        '  - type: dropdown\n'
+        '    id: padre_historia\n'
+        '    attributes:\n'
+        '      label: "Padre (Historia de Usuario)"\n'
+        '      description: "Solo si Nivel = Tarea o Bug"\n'
+        '      options:\n'
+        + '\n'.join(historias) + '\n'
         '    validations:\n'
         '      required: false\n'
         '\n'
@@ -108,39 +126,35 @@ def main():
         '    validations:\n'
         '      required: false\n'
         '\n'
-        '  - type: input\n'
+        '  - type: date\n'
         '    id: fecha_previsto_inicio\n'
         '    attributes:\n'
         '      label: "Fecha Previsto Inicio"\n'
-        '      description: "Fecha estimada de inicio (formato: AAAA-MM-DD)"\n'
-        '      placeholder: "AAAA-MM-DD"\n'
+        '      description: "Fecha estimada de inicio"\n'
         '    validations:\n'
         '      required: false\n'
         '\n'
-        '  - type: input\n'
+        '  - type: date\n'
         '    id: fecha_previsto_fin\n'
         '    attributes:\n'
         '      label: "Fecha Previsto Fin"\n'
-        '      description: "Fecha estimada de término (formato: AAAA-MM-DD)"\n'
-        '      placeholder: "AAAA-MM-DD"\n'
+        '      description: "Fecha estimada de término"\n'
         '    validations:\n'
         '      required: false\n'
         '\n'
-        '  - type: input\n'
+        '  - type: date\n'
         '    id: fecha_real_inicio\n'
         '    attributes:\n'
         '      label: "Fecha Real Inicio"\n'
-        '      description: "Fecha real de inicio (formato: AAAA-MM-DD)"\n'
-        '      placeholder: "AAAA-MM-DD"\n'
+        '      description: "Fecha real de inicio"\n'
         '    validations:\n'
         '      required: false\n'
         '\n'
-        '  - type: input\n'
+        '  - type: date\n'
         '    id: fecha_real_final\n'
         '    attributes:\n'
         '      label: "Fecha Real Final"\n'
-        '      description: "Fecha real de término (formato: AAAA-MM-DD)"\n'
-        '      placeholder: "AAAA-MM-DD"\n'
+        '      description: "Fecha real de término"\n'
         '    validations:\n'
         '      required: false\n'
         '\n'

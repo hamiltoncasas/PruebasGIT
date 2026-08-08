@@ -35,15 +35,13 @@ jobs:
               .toLowerCase();
 
             // Mapeo de headings normalizados -> etiquetas de salida
-            // Varias variantes antiguas del campo padre apuntan al mismo "Padre"
             const expected = {
               'nivel': 'Nivel',
-              'padre': 'Padre',
-              'padre epica': 'Padre',
-              'padre feature': 'Padre',
-              'padre historia de usuario': 'Padre',
-              'numero del issue superior': 'Padre',
-              'numero del issue superior padre': 'Padre',
+              'padre epica': 'PADRE_EPICA',
+              'padre feature': 'PADRE_FEATURE',
+              'padre historia de usuario': 'PADRE_HISTORIA',
+              'numero del issue superior': 'PADRE_EPICA',
+              'numero del issue superior padre': 'PADRE_EPICA',
               'status': 'Status',
               'fecha previsto inicio': 'Fecha Previsto Inicio',
               'fecha previsto fin': 'Fecha Previsto Fin',
@@ -94,7 +92,9 @@ jobs:
             // Escribir las variables a GITHUB_ENV para los pasos siguientes
             const envLines = [
               `NIVEL=${values['Nivel']}`,
-              `PADRE=${values['Padre']}`,
+              `PADRE_EPICA=${values['PADRE_EPICA']}`,
+              `PADRE_FEATURE=${values['PADRE_FEATURE']}`,
+              `PADRE_HISTORIA=${values['PADRE_HISTORIA']}`,
               `STATUS=${values['Status']}`,
               `FECHA_PREVISTO_INICIO=${values['Fecha Previsto Inicio']}`,
               `FECHA_PREVISTO_FIN=${values['Fecha Previsto Fin']}`,
@@ -147,15 +147,16 @@ jobs:
         id: jerarquia
         uses: actions/github-script@v7
         env:
-          PADRE: ${{ env.PADRE }}
+          NIVEL: ${{ env.NIVEL }}
+          PADRE_EPICA: ${{ env.PADRE_EPICA }}
+          PADRE_FEATURE: ${{ env.PADRE_FEATURE }}
+          PADRE_HISTORIA: ${{ env.PADRE_HISTORIA }}
         with:
           script: |
             const fs = require('fs');
             const path = require('path');
             const { owner, repo, number } = context.issue;
 
-            // El valor del dropdown tiene la forma "(Epica) #42 - Título".
-            // Extraemos el número del issue padre.
             const normalize = text => (text || '')
               .normalize('NFD')
               .replace(/[\u0300-\u036f]/g, '')
@@ -179,25 +180,38 @@ jobs:
               return '';
             };
 
-            let padreRaw = (process.env.PADRE || '').trim();
+            const nivel = normalize(process.env.NIVEL);
+
+            // Elegir el dropdown de padre según el nivel (solo el inmediatamente superior):
+            // Feature -> Padre (Epica); Historia De Usuario -> Padre (Feature);
+            // Tarea o Bug -> Padre (Historia de Usuario); Epica -> sin padre.
+            let padreRaw = '';
+            if (nivel === 'feature') {
+              padreRaw = (process.env.PADRE_EPICA || '').trim();
+            } else if (nivel === 'historia de usuario') {
+              padreRaw = (process.env.PADRE_FEATURE || '').trim();
+            } else if (nivel === 'tarea' || nivel === 'bug') {
+              padreRaw = (process.env.PADRE_HISTORIA || '').trim();
+            }
+
+            // El valor del dropdown tiene la forma "#42 - Título" -> extraer el número.
             let padre = '';
             if (padreRaw) {
               const m = padreRaw.match(/#(\d+)/);
               padre = m ? m[1] : '';
             }
 
-            // Fallback: si no se pudo extraer PADRE del env, buscar en el body
-            // del issue actual con todas las variantes de campo padre.
+            // Fallback: si no se pudo extraer del env, buscar en el body del issue
+            // actual con las variantes de campo padre (en orden de prioridad por nivel).
             if (!padre) {
               const body = context.payload.issue.body || '';
-              const variantes = [
-                'Padre',
-                'Padre (Epica)',
-                'Padre (Feature)',
-                'Padre (Historia de Usuario)',
-                'Número del Issue superior (padre)',
-                'Número del Issue superior'
-              ];
+              const variantes = nivel === 'feature'
+                ? ['Padre (Epica)', 'Número del Issue superior (padre)', 'Número del Issue superior']
+                : nivel === 'historia de usuario'
+                  ? ['Padre (Feature)']
+                  : nivel === 'tarea' || nivel === 'bug'
+                    ? ['Padre (Historia de Usuario)']
+                    : [];
               for (const v of variantes) {
                 const val = extractField(body, v);
                 if (val) {
@@ -210,7 +224,7 @@ jobs:
             }
 
             fs.appendFileSync(process.env.GITHUB_ENV, `PADRE=${padre}\n`);
-            console.log('Padre seleccionado:', padre || 'ninguno');
+            console.log('Nivel:', process.env.NIVEL, '-> Padre seleccionado:', padre || 'ninguno');
 
             // Reconstruir la cadena de issues superiores (ancestros) hacia arriba.
             // Cada issue generado por este workflow lleva una etiqueta "parent-N".
@@ -307,8 +321,16 @@ jobs:
               'bug': 'historia de usuario'
             };
 
+            const selectorPadre = {
+              'feature': '"Padre (Epica)"',
+              'historia de usuario': '"Padre (Feature)"',
+              'tarea': '"Padre (Historia de Usuario)"',
+              'bug': '"Padre (Historia de Usuario)"'
+            };
+
             if (nivel !== 'epica' && !padre) {
-              throw new Error('Para este nivel es obligatorio indicar el issue padre (usa el selector "Padre" del formulario).');
+              const sel = selectorPadre[nivel] || '"Padre"';
+              throw new Error(`Para este nivel es obligatorio indicar el issue padre (usa el selector ${sel} del formulario).`);
             }
             if (nivel === 'epica' && padre) {
               throw new Error('Un Epica no debe tener issue padre.');

@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         ## Jerarquía: Epica > Feature > Historia De Usuario > Tarea
-        Elige padre **solo** en el nivel superior: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia).
+        Usa el campo Padre que corresponda: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia).
 
   - type: dropdown
     id: nivel
@@ -24,16 +24,32 @@ body:
       required: true
 
   - type: dropdown
-    id: padre
+    id: padre_epica
     attributes:
-      label: "Padre"
-      description: "Issue superior (su nivel va entre paréntesis). Crea primero el superior."
+      label: "Padre (Epica)"
+      description: "Solo si Nivel = Feature"
       options:
-        - '(Epica) #13 - Epica 1'
-        - '(Feature) #14 - ID0001'
-        - '(Feature) #12 - ID0001'
-        - '(Feature) #11 - TASK 5'
-        - '(Historia De Usuario) #15 - HUS 02'
+        - "(Aún no hay Epicas. Crea una Epica primero.)"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: padre_feature
+    attributes:
+      label: "Padre (Feature)"
+      description: "Solo si Nivel = Historia De Usuario"
+      options:
+        - "(Aún no hay Features. Crea un Feature primero.)"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: padre_historia
+    attributes:
+      label: "Padre (Historia de Usuario)"
+      description: "Solo si Nivel = Tarea o Bug"
+      options:
+        - "(Aún no hay Historias. Crea una Historia primero.)"
     validations:
       required: false
 
@@ -50,39 +66,35 @@ body:
     validations:
       required: false
 
-  - type: input
+  - type: date
     id: fecha_previsto_inicio
     attributes:
       label: "Fecha Previsto Inicio"
-      description: "Fecha estimada de inicio (formato: AAAA-MM-DD)"
-      placeholder: "AAAA-MM-DD"
+      description: "Fecha estimada de inicio"
     validations:
       required: false
 
-  - type: input
+  - type: date
     id: fecha_previsto_fin
     attributes:
       label: "Fecha Previsto Fin"
-      description: "Fecha estimada de término (formato: AAAA-MM-DD)"
-      placeholder: "AAAA-MM-DD"
+      description: "Fecha estimada de término"
     validations:
       required: false
 
-  - type: input
+  - type: date
     id: fecha_real_inicio
     attributes:
       label: "Fecha Real Inicio"
-      description: "Fecha real de inicio (formato: AAAA-MM-DD)"
-      placeholder: "AAAA-MM-DD"
+      description: "Fecha real de inicio"
     validations:
       required: false
 
-  - type: input
+  - type: date
     id: fecha_real_final
     attributes:
       label: "Fecha Real Final"
-      description: "Fecha real de término (formato: AAAA-MM-DD)"
-      placeholder: "AAAA-MM-DD"
+      description: "Fecha real de término"
     validations:
       required: false
 
