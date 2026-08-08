@@ -34,6 +34,11 @@ def normalize(text):
 expected = {
     'nivel': 'Nivel',
     'padre': 'Padre',
+    'padre epica': 'Padre',
+    'padre feature': 'Padre',
+    'padre historia de usuario': 'Padre',
+    'numero del issue superior': 'Padre',
+    'numero del issue superior padre': 'Padre',
     'status': 'Status',
     'fecha previsto inicio': 'Fecha Previsto Inicio',
     'fecha previsto fin': 'Fecha Previsto Fin',
@@ -60,7 +65,7 @@ for i, line in enumerate(lines):
             next_line = next_line.strip()
             if next_line.startswith('#'):
                 break
-            if next_line:
+            if next_line and next_line.lower() != 'no response' and not values[target]:
                 values[target] = next_line
                 break
 

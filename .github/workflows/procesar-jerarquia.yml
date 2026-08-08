@@ -35,9 +35,15 @@ jobs:
               .toLowerCase();
 
             // Mapeo de headings normalizados -> etiquetas de salida
+            // Varias variantes antiguas del campo padre apuntan al mismo "Padre"
             const expected = {
               'nivel': 'Nivel',
               'padre': 'Padre',
+              'padre epica': 'Padre',
+              'padre feature': 'Padre',
+              'padre historia de usuario': 'Padre',
+              'numero del issue superior': 'Padre',
+              'numero del issue superior padre': 'Padre',
               'status': 'Status',
               'fecha previsto inicio': 'Fecha Previsto Inicio',
               'fecha previsto fin': 'Fecha Previsto Fin',
@@ -63,7 +69,7 @@ jobs:
                 for (let j = i + 1; j < lines.length; j++) {
                   const ln = lines[j].trim();
                   if (ln.startsWith('#')) break;
-                  if (ln) {
+                  if (ln && ln.toLowerCase().replace(/_/g, ' ') !== 'no response' && !values[target]) {
                     values[target] = ln;
                     break;
                   }
@@ -150,17 +156,12 @@ jobs:
 
             // El valor del dropdown tiene la forma "(Epica) #42 - Título".
             // Extraemos el número del issue padre.
-            const padreRaw = (process.env.PADRE || '').trim();
-            let padre = '';
-            if (padreRaw) {
-              const m = padreRaw.match(/#(\d+)/);
-              padre = m ? m[1] : '';
-            }
+            const normalize = text => (text || '')
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .trim()
+              .toLowerCase();
 
-            fs.appendFileSync(process.env.GITHUB_ENV, `PADRE=${padre}\n`);
-            console.log('Padre seleccionado:', padre || 'ninguno');
-
-            // Función para extraer el valor de un campo del body del formulario
             const extractField = (body, fieldName) => {
               const lines = (body || '').replace(/\r/g, '').split('\n');
               const pattern = new RegExp('^###\\s*' + fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:?\\s*$', 'i');
@@ -168,7 +169,7 @@ jobs:
                 if (pattern.test(lines[i])) {
                   for (let j = i + 1; j < lines.length; j++) {
                     const line = lines[j].trim();
-                    if (line && !line.startsWith('#')) {
+                    if (line && !line.startsWith('#') && normalize(line).replace(/_/g, ' ') !== 'no response') {
                       return line;
                     }
                   }
@@ -177,6 +178,39 @@ jobs:
               }
               return '';
             };
+
+            let padreRaw = (process.env.PADRE || '').trim();
+            let padre = '';
+            if (padreRaw) {
+              const m = padreRaw.match(/#(\d+)/);
+              padre = m ? m[1] : '';
+            }
+
+            // Fallback: si no se pudo extraer PADRE del env, buscar en el body
+            // del issue actual con todas las variantes de campo padre.
+            if (!padre) {
+              const body = context.payload.issue.body || '';
+              const variantes = [
+                'Padre',
+                'Padre (Epica)',
+                'Padre (Feature)',
+                'Padre (Historia de Usuario)',
+                'Número del Issue superior (padre)',
+                'Número del Issue superior'
+              ];
+              for (const v of variantes) {
+                const val = extractField(body, v);
+                if (val) {
+                  const m = val.match(/#(\d+)/);
+                  if (m) { padre = m[1]; break; }
+                  const n = val.match(/\d+/);
+                  if (n) { padre = n[0]; break; }
+                }
+              }
+            }
+
+            fs.appendFileSync(process.env.GITHUB_ENV, `PADRE=${padre}\n`);
+            console.log('Padre seleccionado:', padre || 'ninguno');
 
             // Reconstruir la cadena de issues superiores (ancestros) hacia arriba.
             // Cada issue generado por este workflow lleva una etiqueta "parent-N".
