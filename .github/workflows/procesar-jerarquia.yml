@@ -140,6 +140,9 @@ jobs:
         env:
           NIVEL: ${{ env.NIVEL }}
         with:
+          # Si existe el secret GH_PAT, usa el PAT (acceso a Proyectos de usuario).
+          # Si no, usa el GITHUB_TOKEN por defecto (solo Proyectos vinculados al repo).
+          token: ${{ secrets.GH_PAT || github.token }}
           script: |
             const { owner, repo, number } = context.issue;
             const nivel = process.env.NIVEL;
