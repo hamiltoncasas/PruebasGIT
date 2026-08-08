@@ -10,7 +10,7 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
-      projects: write
+      repository-projects: write
     steps:
       - name: Obtener datos del formulario
         id: datos
