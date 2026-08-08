@@ -246,6 +246,40 @@ jobs:
               }
             }
 
+            // 7) INTENTAR BORRAR definitivamente los issues cerrados (solo funciona
+            //    si el token es de un ADMININISTRADOR del repo; con WRITE dará 404).
+            //    Si falla, los issues quedaron cerrados (no borrados) sin romper el flujo.
+            console.log('\n--- Intentando borrado definitivo (requiere rol Admin) ---');
+            const borrarIssue = async (num) => {
+              const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${num}`, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${TOKEN_CERRAR}`,
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28'
+                }
+              });
+              if (res.status !== 204) {
+                const body = await res.text().catch(() => '');
+                throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
+              }
+            };
+            let okBorrados = 0, errBorrados = 0;
+            for (const num of numerosIssues) {
+              try {
+                await borrarIssue(num);
+                okBorrados++;
+                console.log(`🗑️🗑️ Issue #${num} BORRADO definitivamente del repositorio`);
+              } catch (e) {
+                errBorrados++;
+                if (!String(e.message).includes('404')) {
+                  console.log(`⚠️ Issue #${num}: ${e.message}`);
+                }
+              }
+            }
+            console.log(`Borrados definitivamente: ${okBorrados}`);
+            console.log(`No borrados (quedaron cerrados; se requiere rol Admin): ${errBorrados}`);
+
             console.log('\n--- Resumen ---');
             console.log(`Items eliminados de Projects: ${okProject}`);
             console.log(`Errores en Projects: ${errProject}`);
