@@ -146,6 +146,29 @@ jobs:
               }
             }
 
+            // 4b) SIEMPRE listar TODOS los issues abiertos del repositorio
+            // (la limpieza del Project puede dar 0 si los issues están en otro lado,
+            //  pero los issues del repo deben eliminarse igualmente).
+            const issuesRepo = [];
+            for await (const res of github.paginate.iterator(
+              github.rest.issues.listForRepo,
+              { owner, repo, state: 'open', per_page: 100 }
+            )) {
+              for (const issue of res.data) {
+                if (issue.pull_request) continue;
+                issuesRepo.push(issue.number);
+                numerosIssues.add(issue.number);
+              }
+            }
+            console.log(`Issues abiertos en el repositorio: ${issuesRepo.length}`);
+
+            // 4c) Si hay issues en el repo pero no en el project, agregar mensaje
+            const projectIssueNumbers = new Set([...todosLosItems].map(i => i.issueNumber).filter(Boolean));
+            const sinProject = issuesRepo.filter(n => !projectIssueNumbers.has(n));
+            if (sinProject.length) {
+              console.log(`Nota: ${sinProject.length} issues no estaban en el Project y se eliminarán solo del repo: #${sinProject.join(', #')}`);
+            }
+
             const totalItems = todosLosItems.length;
             const totalIssues = numerosIssues.size;
             console.log(`\nTotal items en Projects: ${totalItems}`);
