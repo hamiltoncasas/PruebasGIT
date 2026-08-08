@@ -17,11 +17,48 @@ jobs:
         run: |
           BODY="${{ github.event.issue.body }}"
 
-          NIVEL=$(printf '%s\n' "$BODY" | tr -d '\r' | grep -i -A1 '^### *Nivel' | tail -n1 | xargs)
-          PADRE=$(printf '%s\n' "$BODY" | tr -d '\r' | grep -i -A1 '^### *Número del Issue superior' | tail -n1 | xargs)
+          python3 - <<'PY' > $GITHUB_ENV
+import os, re, sys
+body = os.environ.get('BODY', '')
+body = body.replace('\r', '')
+lines = [line.rstrip() for line in body.split('\n')]
 
-          echo "NIVEL=$NIVEL" >> $GITHUB_ENV
-          echo "PADRE=$PADRE" >> $GITHUB_ENV
+def normalize(text):
+    text = text.strip()
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'[\(\)\[\]"\'"\?\!\.,]', '', text)
+    return text.strip().lower()
+
+expected = {
+    'nivel': 'Nivel',
+    'numero del issue superior padre': 'Número del Issue superior',
+    'numero del issue superior': 'Número del Issue superior',
+}
+
+values = {v: '' for v in expected.values()}
+
+for i, line in enumerate(lines):
+    stripped = line.strip()
+    if not stripped.startswith('#'):
+        continue
+    heading = normalize(stripped.lstrip('#'))
+    heading = heading.rstrip(':').strip()
+    if heading in expected:
+        target = expected[heading]
+        for next_line in lines[i + 1:]:
+            next_line = next_line.strip()
+            if next_line and not next_line.startswith('#'):
+                values[target] = next_line
+                break
+
+if not values['Nivel']:
+    print('ERROR: No se encontró el valor de Nivel en el cuerpo del issue.', file=sys.stderr)
+    print('Asegúrate de usar un encabezado "### Nivel" y escribir el valor en la línea siguiente.', file=sys.stderr)
+    sys.exit(1)
+
+print(f"NIVEL={values['Nivel']}")
+print(f"PADRE={values['Número del Issue superior']}")
+PY
 
       - name: Asignar etiqueta según nivel
         run: |
