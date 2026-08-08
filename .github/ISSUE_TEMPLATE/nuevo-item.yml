@@ -29,8 +29,11 @@ body:
       label: "Padre"
       description: "Issue superior. Las opciones muestran el nivel entre paréntesis. Elegir solo el inmediatamente superior: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia)"
       options:
-        - "(Crea primero el nivel superior para que aparezca aquí)"
-        - "(Crea más issues del nivel superior para ver más opciones)"
+        - '(Epica) #13 - Epica 1'
+        - '(Feature) #14 - ID0001'
+        - '(Feature) #12 - ID0001'
+        - '(Feature) #11 - TASK 5'
+        - '(Historia De Usuario) #15 - HUS 02'
     validations:
       required: false
 
