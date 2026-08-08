@@ -16,26 +16,37 @@ jobs:
         id: datos
         run: |
           BODY="${{ github.event.issue.body }}"
-          
-          NIVEL=$(echo "$BODY" | grep -A1 "### Nivel" | tail -n1 | xargs)
-          PADRE=$(echo "$BODY" | grep -A1 "### Número del Issue superior" | tail -n1 | xargs)
-          
+
+          NIVEL=$(printf '%s\n' "$BODY" | tr -d '\r' | grep -i -A1 '^### *Nivel' | tail -n1 | xargs)
+          PADRE=$(printf '%s\n' "$BODY" | tr -d '\r' | grep -i -A1 '^### *Número del Issue superior' | tail -n1 | xargs)
+
           echo "NIVEL=$NIVEL" >> $GITHUB_ENV
           echo "PADRE=$PADRE" >> $GITHUB_ENV
 
       - name: Asignar etiqueta según nivel
         run: |
-          case "${{ env.NIVEL }}" in
-            "Epica") LABEL="epic" ;;
-            "Feature") LABEL="feature" ;;
-            "Historia De Usuario") LABEL="user-story" ;;
-            "Tarea") LABEL="task" ;;
-            "Bug") LABEL="bug" ;;
+          NIVEL_NORMALIZADO=$(echo "${{ env.NIVEL }}" | tr '[:upper:]' '[:lower:]' | sed 's/á/a/g; s/é/e/g; s/í/i/g; s/ó/o/g; s/ú/u/g; s/ü/u/g; s/ñ/n/g; s/ /_/g; s/[^a-z0-9_]//g')
+          case "$NIVEL_NORMALIZADO" in
+            "epica") LABEL="epic" ;;
+            "feature") LABEL="feature" ;;
+            "historia_de_usuario") LABEL="user-story" ;;
+            "tarea") LABEL="task" ;;
+            "bug") LABEL="bug" ;;
+            *)
+              echo "ERROR: Nivel no reconocido: '${{ env.NIVEL }}'"
+              exit 1
+              ;;
           esac
+
+          if [ -z "$LABEL" ]; then
+            echo "ERROR: No se pudo asignar etiqueta para Nivel='${{ env.NIVEL }}'"
+            exit 1
+          fi
+
           echo "LABEL=$LABEL" >> $GITHUB_ENV
 
       - name: Agregar etiqueta al Issue
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             const issue = context.issue;
@@ -47,7 +58,7 @@ jobs:
             });
 
       - name: Actualizar campo "Nivel" en Project v2
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             const { owner, repo, number } = context.issue;
@@ -139,8 +150,8 @@ jobs:
             console.log(`Campo "Nivel" actualizado a "${nivel}" en el Project.`);
 
       - name: Crear relación con padre (comentario + etiqueta)
-        if: env.PADRE != '' && env.NIVEL != 'Epica'
-        uses: actions/github-script@v6
+        if: env.PADRE != '' && toLower(env.NIVEL) != 'epica'
+        uses: actions/github-script@v7
         with:
           script: |
             const issue = context.issue;
