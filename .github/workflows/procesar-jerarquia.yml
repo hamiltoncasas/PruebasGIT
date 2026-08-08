@@ -27,22 +27,30 @@ def normalize(text):
     text = text.strip()
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'[\(\)\[\]"\'"\?\!\.,]', '', text)
-    return text.strip().lower()
+    text = text.rstrip(':').strip().lower()
+    return text
 
 expected = {
     'nivel': 'Nivel',
-    'numero del issue superior padre': 'Número del Issue superior',
     'numero del issue superior': 'Número del Issue superior',
+    'numero del issue superior padre': 'Número del Issue superior',
+    'assignees': 'Assignees',
+    'status': 'Status',
+    'fecha previsto inicio': 'Fecha Previsto Inicio',
+    'fecha previsto fin': 'Fecha Previsto Fin',
+    'fecha real inicio': 'Fecha Real Inicio',
+    'fecha real final': 'Fecha Real Final',
+    'descripcion': 'Descripción',
 }
 
 values = {v: '' for v in expected.values()}
 
 for i, line in enumerate(lines):
     stripped = line.strip()
-    if not stripped.startswith('#'):
+    m = re.match(r'^(#+)\s*(.+)$', stripped)
+    if not m:
         continue
-    heading = normalize(stripped.lstrip('#'))
-    heading = heading.rstrip(':').strip()
+    heading = normalize(m.group(2))
     if heading in expected:
         target = expected[heading]
         for next_line in lines[i + 1:]:
@@ -56,8 +64,24 @@ if not values['Nivel']:
     print('Asegúrate de usar un encabezado "### Nivel" y escribir el valor en la línea siguiente.', file=sys.stderr)
     sys.exit(1)
 
+nivel_normalizado = values['Nivel'].strip().lower()
+if nivel_normalizado != 'epica' and not values['Número del Issue superior']:
+    print('ERROR: Para este nivel es obligatorio el Número del Issue superior (padre).', file=sys.stderr)
+    sys.exit(1)
+
+if nivel_normalizado == 'epica' and values['Número del Issue superior']:
+    print('ERROR: Un Epica no debe tener Número del Issue superior (padre).', file=sys.stderr)
+    sys.exit(1)
+
 print(f"NIVEL={values['Nivel']}")
 print(f"PADRE={values['Número del Issue superior']}")
+print(f"ASSIGNEES={values['Assignees']}")
+print(f"STATUS={values['Status']}")
+print(f"FECHA_PREVISTO_INICIO={values['Fecha Previsto Inicio']}")
+print(f"FECHA_PREVISTO_FIN={values['Fecha Previsto Fin']}")
+print(f"FECHA_REAL_INICIO={values['Fecha Real Inicio']}")
+print(f"FECHA_REAL_FINAL={values['Fecha Real Final']}")
+print(f"DESCRIPCION={values['Descripción']}")
 PY
 
       - name: Asignar etiqueta según nivel
@@ -94,6 +118,82 @@ PY
               issue_number: issue.number,
               labels: [process.env.LABEL]
             });
+
+      - name: Validar título y nivel del padre
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.issue;
+            const title = context.payload.issue?.title || context.issue.title;
+            if (!title || /título/i.test(title) || /\[.*\]\s*-\s*título/i.test(title)) {
+              throw new Error('El título del issue es obligatorio y no puede dejarse con el placeholder "Título".');
+            }
+
+            const normalize = text => text
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .trim()
+              .toLowerCase();
+
+            const nivel = normalize(process.env.NIVEL || '');
+            const padre = (process.env.PADRE || '').trim();
+
+            const expectedParent = {
+              'feature': 'epica',
+              'historia de usuario': 'feature',
+              'tarea': 'historia de usuario',
+              'bug': 'historia de usuario'
+            };
+
+            if (nivel !== 'epica' && !padre) {
+              throw new Error('Para este nivel es obligatorio indicar el issue padre.');
+            }
+            if (nivel === 'epica' && padre) {
+              throw new Error('Un Epica no debe tener issue padre.');
+            }
+            if (nivel !== 'epica') {
+              const expected = expectedParent[nivel];
+              if (!expected) {
+                throw new Error(`Nivel desconocido para validación de padre: ${process.env.NIVEL}`);
+              }
+              const parentNumber = Number(padre);
+              if (!Number.isInteger(parentNumber)) {
+                throw new Error('El número del issue padre no es válido.');
+              }
+
+              const parentIssue = await github.rest.issues.get({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: parentNumber
+              });
+
+              const parentBody = parentIssue.data.body || '';
+              const extractField = (body, fieldName) => {
+                const lines = body.replace(/\r/g, '').split('\n');
+                const pattern = new RegExp('^###\\s*' + fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:?\\s*$', 'i');
+                const normalized = s => s.trim();
+                for (let i = 0; i < lines.length; i++) {
+                  if (pattern.test(lines[i])) {
+                    for (let j = i + 1; j < lines.length; j++) {
+                      const line = normalized(lines[j]);
+                      if (line && !line.startsWith('#')) {
+                        return line;
+                      }
+                    }
+                    break;
+                  }
+                }
+                return '';
+              };
+
+              const parentNivel = normalize(extractField(parentBody, 'Nivel'));
+              if (!parentNivel) {
+                throw new Error(`No se encontró el Nivel en el issue padre #${parentNumber}.`);
+              }
+              if (parentNivel !== expected) {
+                throw new Error(`El issue padre #${parentNumber} debe ser de nivel '${expected}', pero tiene nivel '${parentNivel}'.`);
+              }
+            }
 
       - name: Actualizar campo "Nivel" en Project v2
         uses: actions/github-script@v7

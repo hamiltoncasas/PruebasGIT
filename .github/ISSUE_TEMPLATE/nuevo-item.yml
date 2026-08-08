@@ -1,4 +1,4 @@
-name: "Nuevo Item Jerárquico"
+﻿name: "Nuevo Item Jerárquico"
 description: "Crea un item con su nivel y relación padre-hijo"
 title: "[Nivel] - Título"
 labels: ["needs-triage"]
@@ -8,6 +8,8 @@ body:
       value: |
         ## Selecciona el nivel y el padre (si aplica)
         > **Importante:** Solo los items que NO son Epica necesitan un padre.
+        >
+        > El título del issue es obligatorio y debe reemplazar el placeholder.
 
   - type: dropdown
     id: nivel
@@ -32,10 +34,63 @@ body:
     validations:
       required: false
 
+  - type: assignees
+    id: assignees
+    attributes:
+      label: "Assignees"
+      description: "Asigna uno o varios responsables al issue."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: "Status"
+      description: "Selecciona el estado del item"
+      options:
+        - Nuevo
+        - En Progreso
+        - En Revisión
+        - Completado
+    validations:
+      required: false
+
+  - type: date
+    id: fecha_previsto_inicio
+    attributes:
+      label: "Fecha Previsto Inicio"
+      description: "Fecha estimada de inicio"
+    validations:
+      required: false
+
+  - type: date
+    id: fecha_previsto_fin
+    attributes:
+      label: "Fecha Previsto Fin"
+      description: "Fecha estimada de término"
+    validations:
+      required: false
+
+  - type: date
+    id: fecha_real_inicio
+    attributes:
+      label: "Fecha Real Inicio"
+      description: "Fecha real de inicio"
+    validations:
+      required: false
+
+  - type: date
+    id: fecha_real_final
+    attributes:
+      label: "Fecha Real Final"
+      description: "Fecha real de término"
+    validations:
+      required: false
+
   - type: textarea
     id: descripcion
     attributes:
       label: "Descripción"
       description: "Detalla el contenido de este item"
     validations:
-      required: true
+      required: false
