@@ -33,8 +33,6 @@ def normalize(text):
 
 expected = {
     'nivel': 'Nivel',
-    'numero del issue superior': 'Número del Issue superior',
-    'numero del issue superior padre': 'Número del Issue superior',
     'status': 'Status',
     'fecha previsto inicio': 'Fecha Previsto Inicio',
     'fecha previsto fin': 'Fecha Previsto Fin',
@@ -53,31 +51,29 @@ for i, line in enumerate(lines):
     heading = normalize(m.group(2))
     if heading in expected:
         target = expected[heading]
-        # El valor es la línea inmediatamente siguiente.
-        # Si está vacía o es otro heading, el campo queda vacío.
+        # El valor suele estar en la línea siguiente al heading,
+        # pero GitHub Forms inserta una línea en blanco entre el
+        # heading y el valor. Saltamos líneas en blanco y nos
+        # detenemos al encontrar otro heading (campo vacío).
         for next_line in lines[i + 1:]:
             next_line = next_line.strip()
             if next_line.startswith('#'):
                 break
-            values[target] = next_line
-            break
+            if next_line:
+                values[target] = next_line
+                break
 
 if not values['Nivel']:
     print('ERROR: No se encontró el valor de Nivel en el cuerpo del issue.', file=sys.stderr)
+    print('Contenido recibido (líneas no vacías):', file=sys.stderr)
+    for idx, l in enumerate(lines):
+        l_stripped = l.strip()
+        if l_stripped:
+            print(f'  {idx}: {l_stripped}', file=sys.stderr)
     print('Asegúrate de usar un encabezado "### Nivel" y escribir el valor en la línea siguiente.', file=sys.stderr)
     sys.exit(1)
 
-nivel_normalizado = normalize(values['Nivel'])
-if nivel_normalizado != 'epica' and not values['Número del Issue superior']:
-    print('ERROR: Para este nivel es obligatorio el Número del Issue superior (padre).', file=sys.stderr)
-    sys.exit(1)
-
-if nivel_normalizado == 'epica' and values['Número del Issue superior']:
-    print('ERROR: Un Epica no debe tener Número del Issue superior (padre).', file=sys.stderr)
-    sys.exit(1)
-
 print(f"NIVEL={values['Nivel']}")
-print(f"PADRE={values['Número del Issue superior']}")
 print(f"STATUS={values['Status']}")
 print(f"FECHA_PREVISTO_INICIO={values['Fecha Previsto Inicio']}")
 print(f"FECHA_PREVISTO_FIN={values['Fecha Previsto Fin']}")

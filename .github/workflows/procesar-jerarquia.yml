@@ -15,18 +15,90 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
-      - name: Guardar body del issue en archivo
+      - name: Extraer datos del formulario
+        id: datos
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const body = context.payload.issue.body || '';
-            fs.writeFileSync('/tmp/issue_body.txt', body, 'utf8');
 
-      - name: Obtener datos del formulario
-        id: datos
-        run: |
-          python3 .github/scripts/procesar_formulario.py < /tmp/issue_body.txt >> $GITHUB_ENV
+            // El body del issue, tal cual lo genera el formulario
+            const body = context.payload.issue.body || '';
+
+            // Normaliza: minúsculas, sin acentos/diacríticos, espacios simples, sin puntuación
+            const normalize = (str) => (str || '')
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .replace(/[()\[\]"'"?.,:]/g, '')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .toLowerCase();
+
+            // Mapeo de headings normalizados -> etiquetas de salida
+            const expected = {
+              'nivel': 'Nivel',
+              'status': 'Status',
+              'fecha previsto inicio': 'Fecha Previsto Inicio',
+              'fecha previsto fin': 'Fecha Previsto Fin',
+              'fecha real inicio': 'Fecha Real Inicio',
+              'fecha real final': 'Fecha Real Final',
+              'descripcion': 'Descripción'
+            };
+
+            const lines = body.replace(/\r/g, '').split('\n');
+            const values = {};
+            for (const label of Object.values(expected)) {
+              values[label] = '';
+            }
+
+            for (let i = 0; i < lines.length; i++) {
+              const m = lines[i].trim().match(/^(#{1,6})\s*(.+)$/);
+              if (!m) continue;
+              const heading = normalize(m[2]);
+              if (Object.prototype.hasOwnProperty.call(expected, heading)) {
+                const target = expected[heading];
+                // El valor está en las líneas siguientes: saltar vacías,
+                // detenerse al encontrar otro heading (campo vacío).
+                for (let j = i + 1; j < lines.length; j++) {
+                  const ln = lines[j].trim();
+                  if (ln.startsWith('#')) break;
+                  if (ln) {
+                    // Soporta formato antiguo con checkbox: "- [x] Valor"
+                    const cb = ln.match(/^[-*]\s*\[\s*x?\s*\]\s*(.*)$/i);
+                    values[target] = cb ? cb[1].trim() : ln;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (!values['Nivel']) {
+              const err = `No se encontró el valor de '### Nivel' en el cuerpo del issue.\n\n` +
+                `Contenido recibido (primeras 800 caracteres):\n\`\`\`\n${body.slice(0, 800)}\n\`\`\``;
+              // Dejar evidencia visible en el propio issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `⚠️ **Error de procesamiento:** ${err}`
+              });
+              core.setFailed(err);
+              return;
+            }
+
+            // Escribir las variables a GITHUB_ENV para los pasos siguientes
+            const envLines = [
+              `NIVEL=${values['Nivel']}`,
+              `STATUS=${values['Status']}`,
+              `FECHA_PREVISTO_INICIO=${values['Fecha Previsto Inicio']}`,
+              `FECHA_PREVISTO_FIN=${values['Fecha Previsto Fin']}`,
+              `FECHA_REAL_INICIO=${values['Fecha Real Inicio']}`,
+              `FECHA_REAL_FINAL=${values['Fecha Real Final']}`,
+              `DESCRIPCION=${values['Descripción']}`
+            ];
+            fs.appendFileSync(process.env.GITHUB_ENV, envLines.join('\n') + '\n');
+
+            console.log('Datos extraídos:', JSON.stringify(values, null, 2));
 
       - name: Asignar etiqueta según nivel
         run: |
@@ -65,6 +137,64 @@ jobs:
               labels: [process.env.LABEL]
             });
 
+      - name: Obtener issues superiores (Parent issue nativo)
+        id: jerarquia
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const { owner, repo, number } = context.issue;
+
+            // Consulta del padre nativo vía GraphQL ("Parent issue")
+            const queryParent = `
+              query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  issue(number: $number) {
+                    parent {
+                      number
+                      title
+                      body
+                    }
+                  }
+                }
+              }
+            `;
+
+            // Recorrer la cadena de padres hacia arriba y listar todos los ancestros
+            const ancestors = [];
+            const seen = new Set();
+            try {
+              let current = number;
+              for (let i = 0; i < 10; i++) {
+                const data = await github.graphql(queryParent, { owner, repo, number: current });
+                const parent = data.repository.issue.parent;
+                if (!parent) break;
+                if (seen.has(parent.number)) {
+                  throw new Error(`Ciclo detectado en la cadena de padres (issue #${parent.number}).`);
+                }
+                seen.add(parent.number);
+                ancestors.push({ number: parent.number, title: parent.title, body: parent.body || '' });
+                current = parent.number;
+              }
+            } catch (e) {
+              throw new Error(
+                `No se pudo obtener el Parent issue del issue #${number}: ${e.message}. ` +
+                `Asegúrate de que la jerarquía de issues (Sub-issues / Parent issue) esté habilitada en el repositorio.`
+              );
+            }
+
+            // PADRE = primer padre directo (para comentario/etiqueta), vacío si es raíz
+            const padre = ancestors.length > 0 ? ancestors[0].number : '';
+            fs.appendFileSync(process.env.GITHUB_ENV, `PADRE=${padre}\n`);
+
+            // Guardar la cadena completa de ancestros (issues superiores) para los siguientes pasos
+            const tempFile = path.join(process.env.RUNNER_TEMP, 'ancestros.json');
+            fs.writeFileSync(tempFile, JSON.stringify(ancestors, null, 2));
+
+            console.log('Padre directo:', padre || 'ninguno');
+            console.log('Issues superiores (ancestros):', JSON.stringify(ancestors.map(a => a.number), null, 2));
+
       - name: Validar título y nivel del padre
         uses: actions/github-script@v7
         env:
@@ -72,6 +202,8 @@ jobs:
           PADRE: ${{ env.PADRE }}
         with:
           script: |
+            const fs = require('fs');
+            const path = require('path');
             const issue = context.issue;
             const title = context.payload.issue?.title || context.issue.title;
             if (!title || /título/i.test(title) || /\[.*\]\s*-\s*título/i.test(title)) {
@@ -95,7 +227,7 @@ jobs:
             };
 
             if (nivel !== 'epica' && !padre) {
-              throw new Error('Para este nivel es obligatorio indicar el issue padre.');
+              throw new Error('Para este nivel es obligatorio indicar el issue padre (campo "Parent issue" del editor de issues).');
             }
             if (nivel === 'epica' && padre) {
               throw new Error('Un Epica no debe tener issue padre.');
@@ -110,13 +242,25 @@ jobs:
                 throw new Error('El número del issue padre no es válido.');
               }
 
-              const parentIssue = await github.rest.issues.get({
-                owner: issue.owner,
-                repo: issue.repo,
-                issue_number: parentNumber
-              });
+              // Obtener el body del padre directo desde la cadena de ancestros ya cargada
+              let parentBody = '';
+              try {
+                const tempFile = path.join(process.env.RUNNER_TEMP, 'ancestros.json');
+                const ancestors = JSON.parse(fs.readFileSync(tempFile, 'utf8'));
+                const direct = ancestors.find(a => a.number === parentNumber);
+                parentBody = direct ? direct.body : '';
+              } catch (e) {}
 
-              const parentBody = parentIssue.data.body || '';
+              // Si no está en la cadena guardada, consultarlo directamente
+              if (!parentBody) {
+                const parentIssue = await github.rest.issues.get({
+                  owner: issue.owner,
+                  repo: issue.repo,
+                  issue_number: parentNumber
+                });
+                parentBody = parentIssue.data.body || '';
+              }
+
               const extractField = (body, fieldName) => {
                 const lines = body.replace(/\r/g, '').split('\n');
                 const pattern = new RegExp('^###\\s*' + fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:?\\s*$', 'i');
@@ -144,15 +288,55 @@ jobs:
               }
             }
 
-      - name: Actualizar campo "Nivel" en Project v2
+      - name: Agregar items y issues superiores al Project v2 (campo "Nivel")
         uses: actions/github-script@v7
         env:
           NIVEL: ${{ env.NIVEL }}
         with:
           script: |
+            const fs = require('fs');
+            const path = require('path');
             const { owner, repo, number } = context.issue;
-            const nivel = process.env.NIVEL;
-            
+
+            // Cargar la cadena de issues superiores (ancestros) generada previamente
+            let ancestors = [];
+            try {
+              const tempFile = path.join(process.env.RUNNER_TEMP, 'ancestros.json');
+              ancestors = JSON.parse(fs.readFileSync(tempFile, 'utf8'));
+            } catch (e) {}
+
+            const extractField = (body, fieldName) => {
+              const lines = (body || '').replace(/\r/g, '').split('\n');
+              const pattern = new RegExp('^###\\s*' + fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:?\\s*$', 'i');
+              const normalized = s => s.trim();
+              for (let i = 0; i < lines.length; i++) {
+                if (pattern.test(lines[i])) {
+                  for (let j = i + 1; j < lines.length; j++) {
+                    const line = normalized(lines[j]);
+                    if (line && !line.startsWith('#')) {
+                      return line;
+                    }
+                  }
+                  break;
+                }
+              }
+              return '';
+            };
+
+            const normalize = text => (text || '')
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .trim()
+              .toLowerCase();
+
+            // Lista de items a garantizar en el Project:
+            // el nuevo issue + todos los issues existentes que estén por encima (ancestros)
+            const items = [{ number, nivel: process.env.NIVEL }];
+            for (const anc of ancestors) {
+              const nivelAncestro = extractField(anc.body, 'Nivel');
+              items.push({ number: anc.number, nivel: nivelAncestro });
+            }
+
             const queryProject = `
               query($owner: String!, $repo: String!) {
                 repository(owner: $owner, name: $repo) {
@@ -180,27 +364,10 @@ jobs:
             const projectData = await github.graphql(queryProject, { owner, repo });
             const project = projectData.repository.projectsV2.nodes[0];
             if (!project) throw new Error("No se encontró ningún Project v2 en este repositorio.");
-            
+
             const field = project.fields.nodes.find(f => f.name === "Nivel");
             if (!field) throw new Error("No se encontró el campo 'Nivel' en el Project.");
-            
-            const option = field.options.find(o => o.name === nivel);
-            if (!option) throw new Error(`No se encontró la opción "${nivel}" en el campo 'Nivel'.`);
-            
-            const issueData = await github.rest.issues.get({ owner, repo, issue_number: number });
-            const issueId = issueData.data.node_id;
-            
-            const mutationAdd = `
-              mutation($projectId: ID!, $issueId: ID!) {
-                addProjectV2ItemById(input: { projectId: $projectId, contentId: $issueId }) {
-                  item {
-                    id
-                  }
-                }
-              }
-            `;
-            await github.graphql(mutationAdd, { projectId: project.id, issueId: issueId });
-            
+
             const queryItem = `
               query($projectId: ID!, $issueId: ID!) {
                 node(id: $projectId) {
@@ -214,9 +381,17 @@ jobs:
                 }
               }
             `;
-            const itemData = await github.graphql(queryItem, { projectId: project.id, issueId: issueId });
-            const itemId = itemData.node.items.nodes[0].id;
-            
+
+            const mutationAdd = `
+              mutation($projectId: ID!, $issueId: ID!) {
+                addProjectV2ItemById(input: { projectId: $projectId, contentId: $issueId }) {
+                  item {
+                    id
+                  }
+                }
+              }
+            `;
+
             const mutationUpdate = `
               mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
                 updateProjectV2ItemFieldValue(input: {
@@ -229,14 +404,41 @@ jobs:
                 }
               }
             `;
-            await github.graphql(mutationUpdate, {
-              projectId: project.id,
-              itemId: itemId,
-              fieldId: field.id,
-              optionId: option.id
-            });
-            
-            console.log(`Campo "Nivel" actualizado a "${nivel}" en el Project.`);
+
+            for (const item of items) {
+              const issueData = await github.rest.issues.get({ owner, repo, issue_number: item.number });
+              const issueId = issueData.data.node_id;
+
+              // Verificar si el issue ya está en el Project (evita duplicados)
+              let itemData = await github.graphql(queryItem, { projectId: project.id, issueId: issueId });
+              let itemId = itemData.node?.items?.nodes?.[0]?.id;
+
+              if (!itemId) {
+                const added = await github.graphql(mutationAdd, { projectId: project.id, issueId: issueId });
+                itemId = added.addProjectV2ItemById.item.id;
+              }
+
+              if (!item.nivel) {
+                console.log(`Issue #${item.number}: presente en el Project, pero no se pudo extraer su Nivel.`);
+                continue;
+              }
+
+              const nivelNorm = normalize(item.nivel);
+              const option = field.options.find(o => normalize(o.name) === nivelNorm);
+              if (!option) {
+                console.log(`Issue #${item.number}: no se encontró la opción "${item.nivel}" en el campo 'Nivel'.`);
+                continue;
+              }
+
+              await github.graphql(mutationUpdate, {
+                projectId: project.id,
+                itemId: itemId,
+                fieldId: field.id,
+                optionId: option.id
+              });
+
+              console.log(`Issue #${item.number}: Nivel "${item.nivel}" asignado en el Project.`);
+            }
 
       - name: Crear relación con padre (comentario + etiqueta)
         if: env.PADRE != '' && env.NIVEL_NORMALIZADO != 'epica'
@@ -247,21 +449,21 @@ jobs:
           script: |
             const issue = context.issue;
             const padre = parseInt(process.env.PADRE);
-            
+
             try {
               await github.rest.issues.get({
                 owner: issue.owner,
                 repo: issue.repo,
                 issue_number: padre
               });
-              
+
               await github.rest.issues.createComment({
                 owner: issue.owner,
                 repo: issue.repo,
                 issue_number: issue.number,
                 body: `🔗 Este item pertenece al Issue padre #${padre}`
               });
-              
+
               await github.rest.issues.addLabels({
                 owner: issue.owner,
                 repo: issue.repo,

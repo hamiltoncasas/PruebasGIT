@@ -9,6 +9,11 @@ body:
         ## Selecciona el nivel y el padre (si aplica)
         > **Importante:** Solo los items que NO son Epica necesitan un padre.
         >
+        > **¿Cómo asignar el padre?** Al crear el issue, usa el campo **Parent issue**
+        > del panel derecho del editor de issues (escribe `#` y el número del issue
+        > superior, o búscalo por título). Ese campo nativo reemplaza al antiguo
+        > "Número del Issue superior" del formulario.
+        >
         > El título del issue es obligatorio y debe reemplazar el placeholder.
 
   - type: dropdown
@@ -24,15 +29,6 @@ body:
         - Bug
     validations:
       required: true
-
-  - type: input
-    id: padre
-    attributes:
-      label: "Número del Issue superior (padre)"
-      description: "Si no es Epica, escribe el número del Issue padre (ej: 42). Solo Epica puede dejarlo vacío."
-      placeholder: "Ej: 42"
-    validations:
-      required: false
 
   - type: dropdown
     id: status
