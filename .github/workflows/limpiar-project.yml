@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   limpiar:
@@ -87,28 +88,35 @@ jobs:
             let project = proyectos.find(p => p.title.includes('Proyecto Avances GIT')) || proyectos[0];
             console.log(`Limpiando project: "${project.title}"`);
 
-            // 3) Listar items (hasta 1000)
+            // 3) Listar items (hasta 1000) incluyendo el numero de issue de su contenido
             const qItems = `
               query($projectId: ID!) {
                 node(id: $projectId) {
                   ... on ProjectV2 {
                     items(first: 100) {
-                      nodes { id }
+                      nodes {
+                        id
+                        content {
+                          ... on Issue {
+                            number
+                          }
+                        }
+                      }
                       pageInfo { hasNextPage endCursor }
                     }
                   }
                 }
               }
             `;
-            const allItems = [];
+            const allItems = []; // { id, issueNumber }
             let cursor = null;
             for (let i = 0; i < 10; i++) {
-              const vars = { projectId: project.id };
-              if (cursor) vars.cursor = cursor;
               const q = qItems.replace('items(first: 100)', `items(first: 100${cursor ? ', after: "' + cursor + '"' : ''})`);
               const data = await gql(q, { projectId: project.id });
               const items = data.node.items;
-              for (const it of items.nodes) allItems.push(it.id);
+              for (const it of items.nodes) {
+                allItems.push({ id: it.id, issueNumber: it.content?.number || null });
+              }
               if (!items.pageInfo.hasNextPage) break;
               cursor = items.pageInfo.endCursor;
             }
@@ -119,7 +127,7 @@ jobs:
               return;
             }
 
-            // 4) Eliminar cada item
+            // 4) Eliminar cada item del Project
             const mDel = `
               mutation($projectId: ID!, $itemId: ID!) {
                 deleteProjectV2Item(input: { projectId: $projectId, itemId: $itemId }) {
@@ -128,17 +136,36 @@ jobs:
               }
             `;
             let ok = 0, err = 0;
-            for (const itemId of allItems) {
+            for (const item of allItems) {
               try {
-                await gql(mDel, { projectId: project.id, itemId });
+                await gql(mDel, { projectId: project.id, itemId: item.id });
                 ok++;
               } catch (e) {
                 err++;
-                console.log(`❌ Error eliminando item ${itemId}: ${e.message}`);
+                console.log(`❌ Error eliminando item ${item.id} del Project: ${e.message}`);
+              }
+            }
+
+            // 5) Eliminar los issues del repositorio (los que estaban en el Project)
+            let okIssues = 0, errIssues = 0;
+            const numerosUVeces = new Set();
+            for (const item of allItems) {
+              const num = item.issueNumber;
+              if (!num || numerosUVeces.has(num)) continue;
+              numerosUVeces.add(num);
+              try {
+                await github.rest.issues.delete({ owner, repo, issue_number: num });
+                okIssues++;
+                console.log(`🗑️ Issue #${num} eliminado del repositorio`);
+              } catch (e) {
+                errIssues++;
+                console.log(`❌ Error eliminando issue #${num} del repo: ${e.message}`);
               }
             }
 
             console.log('\n--- Resumen ---');
-            console.log(`Eliminados: ${ok}`);
-            console.log(`Errores: ${err}`);
+            console.log(`Items eliminados del Project: ${ok}`);
+            console.log(`Errores en Project: ${err}`);
+            console.log(`Issues eliminados del repositorio: ${okIssues}`);
+            console.log(`Errores en repositorio: ${errIssues}`);
             console.log(`Total items del Project: ${allItems.length}`);
