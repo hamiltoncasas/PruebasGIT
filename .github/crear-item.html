@@ -9,12 +9,23 @@
   h1 { font-size: 24px; }
   .card { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 24px; }
   label { display: block; font-weight: 600; margin: 16px 0 6px; }
-  select, input, textarea { width: 100%; padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; font-size: 14px; box-sizing: border-box; }
+  select, input { width: 100%; padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; font-size: 14px; box-sizing: border-box; }
   .hint { font-size: 12px; color: #57606a; margin-top: 4px; }
-  .btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #1f883d; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 600; }
+  .btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #1f883d; color: #fff; border: 0; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer; }
   .btn:disabled { background: #94d3a2; cursor: not-allowed; }
+  .btn-secondary { background: #0969da; }
   .error { color: #cf222e; font-size: 13px; margin-top: 8px; display: none; }
   #info { font-size: 13px; color: #57606a; margin-top: 12px; }
+
+  /* Modal (se abre ENCIMA de la página) */
+  .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; justify-content: center; align-items: center; }
+  .overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: 10px; padding: 24px; max-width: 480px; width: 90%; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+  .modal h3 { margin-top: 0; }
+  .modal .fila { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+  .modal .fila strong { color: #57606a; }
+  .modal .acciones { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .btn-cerrar { background: #d0d7de; color: #24292f; }
 </style>
 </head>
 <body>
@@ -35,7 +46,7 @@
     <option value="bug">Bug</option>
   </select>
 
-  <label for="padre">Padre <span id="padreRequerido"></span></label>
+  <label for="padre">Padre <span id="padreRequerido" style="color:#cf222e;"></span></label>
   <select id="padre" disabled>
     <option value="">Selecciona primero el nivel...</option>
   </select>
@@ -55,7 +66,19 @@
   <div id="info">Cargando issues del repositorio...</div>
   <div class="error" id="error"></div>
 
-  <button class="btn" id="crearBtn" disabled>Crear Issue en GitHub</button>
+  <button class="btn" id="crearBtn" disabled>Crear Issue</button>
+</div>
+
+<!-- Modal que se abre encima -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3>Confirmar creación</h3>
+    <div id="modalResumen"></div>
+    <div class="acciones">
+      <button class="btn btn-secondary" id="confirmarBtn">Abrir formulario en GitHub</button>
+      <button class="btn btn-cerrar" id="cerrarBtn">Cancelar</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -67,6 +90,13 @@ const JERARQUIA = {
   'historia de usuario': 'feature',
   'tarea': 'historia de usuario',
   'bug': 'historia de usuario'
+};
+const NOMBRE_NIVEL = {
+  'epica': 'Epica',
+  'feature': 'Feature',
+  'historia de usuario': 'Historia De Usuario',
+  'tarea': 'Tarea',
+  'bug': 'Bug'
 };
 
 const issuesPorNivel = { 'epica': [], 'feature': [], 'historia de usuario': [] };
@@ -95,20 +125,29 @@ function extractField(body, fieldName) {
 }
 
 function nivelDeIssue(issue) {
-  // 1) Por etiquetas
+  // 1) Por body (campo Nivel)
+  const body_nivel = normalize(extractField(issue.body, 'Nivel'));
+  if (body_nivel) return body_nivel;
+  // 2) Por etiquetas
   const labels = (issue.labels || []).map(l => l.name.toLowerCase());
   const map = { 'epic': 'epica', 'feature': 'feature', 'user-story': 'historia de usuario', 'task': 'tarea', 'bug': 'bug' };
   for (const [label, nivel] of Object.entries(map)) {
     if (labels.includes(label)) return nivel;
   }
-  // 2) Por campo Nivel del body
-  return normalize(extractField(issue.body, 'Nivel'));
+  return '';
 }
 
 async function cargarIssues() {
-  // La API pública de GitHub permite CORS y lectura sin token (límite 60 req/h por IP)
   const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues?state=open&per_page=100`;
-  const res = await fetch(url);
+  let res;
+  try {
+    res = await fetch(url, { headers: { 'Accept': 'application/vnd.github+json' } });
+  } catch (e) {
+    throw new Error('No se pudo conectar con la API de GitHub (¿estás abriendo el archivo como file://? Prueba con GitHub Pages o con un servidor local). Detalle: ' + e.message);
+  }
+  if (res.status === 403 || res.status === 429) {
+    throw new Error('Límite de solicitudes de la API de GitHub alcanzado (60/hora por IP). Espera un poco o usa GitHub Pages.');
+  }
   if (!res.ok) throw new Error(`API GitHub: ${res.status} ${res.statusText}`);
   const issues = await res.json();
   let contados = 0;
@@ -123,13 +162,6 @@ async function cargarIssues() {
   }
   document.getElementById('info').textContent =
     `Issues cargados: ${contados}. Epicas: ${issuesPorNivel.epica.length}, Features: ${issuesPorNivel.feature.length}, Historias: ${issuesPorNivel['historia de usuario'].length}`;
-  habilitar();
-}
-
-function habilitar() {
-  document.getElementById('titulo').disabled = false;
-  document.getElementById('status').disabled = false;
-  document.getElementById('nivel').disabled = false;
   actualizarPadre();
 }
 
@@ -153,33 +185,40 @@ function actualizarPadre() {
     sel.innerHTML = '<option value="">(Epica no tiene padre)</option>';
     hint.textContent = 'Una Epica no tiene nivel superior.';
     req.textContent = '';
-    document.getElementById('crearBtn').disabled = document.getElementById('titulo').value.trim() === '';
+    validarBoton();
     return;
   }
 
   const lista = issuesPorNivel[nivelPadre] || [];
   req.textContent = '*';
   if (lista.length === 0) {
-    sel.innerHTML = `<option value="">(No hay ${nivelPadre}s creadas. Crea una primero.)</option>`;
-    hint.textContent = `Debes crear primero una ${nivelPadre === 'epica' ? 'Epica' : nivelPadre === 'feature' ? 'Feature' : 'Historia De Usuario'} para poder seleccionarla.`;
+    sel.innerHTML = `<option value="">(No hay ${NOMBRE_NIVEL[nivelPadre]}s creadas. Crea una primero.)</option>`;
+    hint.textContent = `Debes crear primero una ${NOMBRE_NIVEL[nivelPadre]} para poder seleccionarla.`;
   } else {
     sel.innerHTML = '<option value="">Selecciona el padre...</option>' +
       lista.map(i => `<option value="${i.number}">#${i.number} - ${i.title}</option>`).join('');
-    hint.textContent = `Mostrando solo ${nivelPadre === 'epica' ? 'Epicas' : nivelPadre === 'feature' ? 'Features' : 'Historias de Usuario'} (nivel superior de ${nivel}).`;
+    hint.textContent = `Mostrando solo ${NOMBRE_NIVEL[nivelPadre]}s (nivel superior de ${NOMBRE_NIVEL[nivel]}).`;
   }
   sel.disabled = false;
-  document.getElementById('crearBtn').disabled = document.getElementById('titulo').value.trim() === '';
+  validarBoton();
+}
+
+function validarBoton() {
+  const nivel = document.getElementById('nivel').value;
+  const titulo = document.getElementById('titulo').value.trim();
+  const nivelPadre = JERARQUIA[nivel] || '';
+  const padreSel = document.getElementById('padre');
+  const hayPadre = !nivelPadre || (padreSel.value !== '' && !padreSel.disabled);
+  document.getElementById('crearBtn').disabled = !(nivel && titulo && hayPadre);
 }
 
 function construirBody() {
   const nivel = document.getElementById('nivel').value;
   const padreNum = document.getElementById('padre').value;
-  const titulo = document.getElementById('titulo').value.trim();
   const status = document.getElementById('status').value;
 
-  let body = `### Nivel\n\n${nivel}\n\n`;
+  let body = `### Nivel\n\n${NOMBRE_NIVEL[nivel]}\n\n`;
   if (padreNum) {
-    // Heading correspondiente al nivel superior para que el workflow lo detecte
     const nivelPadre = JERARQUIA[nivel];
     const nombreHeading = nivelPadre === 'epica' ? 'Padre (Epica)' : nivelPadre === 'feature' ? 'Padre (Feature)' : 'Padre (Historia de Usuario)';
     const issuePadre = (issuesPorNivel[nivelPadre] || []).find(i => String(i.number) === padreNum);
@@ -193,39 +232,60 @@ function construirBody() {
   return body;
 }
 
-function crearEnlace() {
+function abrirModal() {
+  const nivel = document.getElementById('nivel').value;
+  const padreNum = document.getElementById('padre').value;
+  const titulo = document.getElementById('titulo').value.trim();
+
+  const nivelPadre = JERARQUIA[nivel];
+  let padreTexto = '(sin padre)';
+  if (padreNum) {
+    const issuePadre = (issuesPorNivel[nivelPadre] || []).find(i => String(i.number) === padreNum);
+    padreTexto = `#${padreNum} - ${issuePadre ? issuePadre.title : ''}`;
+  }
+
+  document.getElementById('modalResumen').innerHTML =
+    `<div class="fila"><strong>Nivel</strong><span>${NOMBRE_NIVEL[nivel]}</span></div>` +
+    `<div class="fila"><strong>Padre</strong><span>${padreTexto}</span></div>` +
+    `<div class="fila"><strong>Título</strong><span>${titulo.replace(/</g, '<')}</span></div>`;
+
+  document.getElementById('overlay').classList.add('show');
+}
+
+function confirmarCrear() {
   const titulo = document.getElementById('titulo').value.trim();
   const body = construirBody();
   const params = new URLSearchParams({
-    title: `[${document.getElementById('nivel').value}] ${titulo}`,
+    title: `[${NOMBRE_NIVEL[document.getElementById('nivel').value]}] ${titulo}`,
     body: body
   });
-  // Abrir el formulario nativo de GitHub pre-llenado
-  window.open(`https://github.com/${REPO_OWNER}/${REPO_NAME}/issues/new?${params.toString()}`, '_blank');
+  // Abre el formulario de GitHub en la MISMA pestaña (sin pantalla nueva)
+  window.location.href = `https://github.com/${REPO_OWNER}/${REPO_NAME}/issues/new?${params.toString()}`;
+}
+
+function cerrarModal() {
+  document.getElementById('overlay').classList.remove('show');
 }
 
 document.getElementById('nivel').addEventListener('change', actualizarPadre);
-document.getElementById('titulo').addEventListener('input', () => {
-  document.getElementById('crearBtn').disabled = document.getElementById('titulo').value.trim() === '';
-});
-document.getElementById('crearBtn').addEventListener('click', crearEnlace);
+document.getElementById('padre').addEventListener('change', validarBoton);
+document.getElementById('titulo').addEventListener('input', validarBoton);
+document.getElementById('crearBtn').addEventListener('click', abrirModal);
+document.getElementById('confirmarBtn').addEventListener('click', confirmarCrear);
+document.getElementById('cerrarBtn').addEventListener('click', cerrarModal);
+document.getElementById('overlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) cerrarModal(); });
 
 // Inicio
-cargarIssues().catch(e => {
-  document.getElementById('error').style.display = 'block';
-  document.getElementById('error').textContent = 'Error al cargar issues: ' + e.message;
-  document.getElementById('info').textContent = '';
-});
+document.getElementById('nivel').disabled = true;
+cargarIssues()
+  .then(() => { document.getElementById('nivel').disabled = false; })
+  .catch(e => {
+    document.getElementById('error').style.display = 'block';
+    document.getElementById('error').textContent = 'Error al cargar issues: ' + e.message;
+    document.getElementById('info').textContent = '';
+    // Permitir crear sin dependencia de los issues cargados (con padre manual opcional)
+    document.getElementById('nivel').disabled = false;
+  });
 </script>
 </body>
 </html>
-</｜｜DSML｜｜>
-<task_progress>
-- [x] Crear app web dinámica (crear-item.html): filtra el padre según el nivel en tiempo real
-- [ ] Simplificar formulario nativo: un solo dropdown "Padre" con etiqueta de nivel
-- [ ] Actualizar generador de plantilla (un solo dropdown)
-- [ ] Actualizar procesar_formulario.py y workflow (un solo PADRE)
-- [ ] Testear contra la API real del repo
-- [ ] Commit y push de todo
-</task_progress>
-</write_to_file>

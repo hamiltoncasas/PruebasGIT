@@ -7,7 +7,9 @@ body:
     attributes:
       value: |
         ## Jerarquía: Epica > Feature > Historia De Usuario > Tarea
-        💡 **Para filtrado automático del padre** usa: https://hamiltoncasas.github.io/PruebasGIT/crear-item.html
+
+        ### ➜ [✨ ABRIR CREADOR VISUAL CON FILTRADO AUTOMÁTICO DEL PADRE](https://hamiltoncasas.github.io/PruebasGIT/crear-item.html)
+        > _Seleccionas el Nivel y el campo Padre se llena solo con el nivel inmediatamente superior._
 
   - type: dropdown
     id: nivel
