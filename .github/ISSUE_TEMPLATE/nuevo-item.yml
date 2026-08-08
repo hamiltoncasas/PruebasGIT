@@ -30,7 +30,7 @@ body:
       description: "Solo si Nivel = Feature"
       options:
         - '#13 - Epica 1'
-        - '(Crea más Epicas para ver más opciones.)'
+        - '(Crea más issues de este nivel para ver más opciones.)'
     validations:
       required: false
 
@@ -53,7 +53,7 @@ body:
       description: "Solo si Nivel = Tarea o Bug"
       options:
         - '#15 - HUS 02'
-        - '(Crea más Historias para ver más opciones.)'
+        - '(Crea más issues de este nivel para ver más opciones.)'
     validations:
       required: false
 
