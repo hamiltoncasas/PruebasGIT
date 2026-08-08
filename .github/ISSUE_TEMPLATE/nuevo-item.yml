@@ -29,7 +29,7 @@ body:
       label: "Padre (Epica)"
       description: "Solo si Nivel = Feature"
       options:
-        - "(Aún no hay Epicas. Crea una Epica primero.)"
+        - '#13 - Epica 1'
     validations:
       required: false
 
@@ -39,7 +39,9 @@ body:
       label: "Padre (Feature)"
       description: "Solo si Nivel = Historia De Usuario"
       options:
-        - "(Aún no hay Features. Crea un Feature primero.)"
+        - '#14 - ID0001'
+        - '#12 - ID0001'
+        - '#11 - TASK 5'
     validations:
       required: false
 
@@ -49,7 +51,7 @@ body:
       label: "Padre (Historia de Usuario)"
       description: "Solo si Nivel = Tarea o Bug"
       options:
-        - "(Aún no hay Historias. Crea una Historia primero.)"
+        - '#15 - HUS 02'
     validations:
       required: false
 
