@@ -33,6 +33,9 @@ def normalize(text):
 
 expected = {
     'nivel': 'Nivel',
+    'padre epica': 'Padre (Epica)',
+    'padre feature': 'Padre (Feature)',
+    'padre historia de usuario': 'Padre (Historia de Usuario)',
     'status': 'Status',
     'fecha previsto inicio': 'Fecha Previsto Inicio',
     'fecha previsto fin': 'Fecha Previsto Fin',
@@ -74,6 +77,9 @@ if not values['Nivel']:
     sys.exit(1)
 
 print(f"NIVEL={values['Nivel']}")
+print(f"PADRE_EPICA={values['Padre (Epica)']}")
+print(f"PADRE_FEATURE={values['Padre (Feature)']}")
+print(f"PADRE_HISTORIA={values['Padre (Historia de Usuario)']}")
 print(f"STATUS={values['Status']}")
 print(f"FECHA_PREVISTO_INICIO={values['Fecha Previsto Inicio']}")
 print(f"FECHA_PREVISTO_FIN={values['Fecha Previsto Fin']}")

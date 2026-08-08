@@ -37,6 +37,9 @@ jobs:
             // Mapeo de headings normalizados -> etiquetas de salida
             const expected = {
               'nivel': 'Nivel',
+              'padre epica': 'Padre (Epica)',
+              'padre feature': 'Padre (Feature)',
+              'padre historia de usuario': 'Padre (Historia de Usuario)',
               'status': 'Status',
               'fecha previsto inicio': 'Fecha Previsto Inicio',
               'fecha previsto fin': 'Fecha Previsto Fin',
@@ -63,9 +66,7 @@ jobs:
                   const ln = lines[j].trim();
                   if (ln.startsWith('#')) break;
                   if (ln) {
-                    // Soporta formato antiguo con checkbox: "- [x] Valor"
-                    const cb = ln.match(/^[-*]\s*\[\s*x?\s*\]\s*(.*)$/i);
-                    values[target] = cb ? cb[1].trim() : ln;
+                    values[target] = ln;
                     break;
                   }
                 }
@@ -89,6 +90,9 @@ jobs:
             // Escribir las variables a GITHUB_ENV para los pasos siguientes
             const envLines = [
               `NIVEL=${values['Nivel']}`,
+              `PADRE_EPICA=${values['Padre (Epica)']}`,
+              `PADRE_FEATURE=${values['Padre (Feature)']}`,
+              `PADRE_HISTORIA=${values['Padre (Historia de Usuario)']}`,
               `STATUS=${values['Status']}`,
               `FECHA_PREVISTO_INICIO=${values['Fecha Previsto Inicio']}`,
               `FECHA_PREVISTO_FIN=${values['Fecha Previsto Fin']}`,
@@ -137,62 +141,126 @@ jobs:
               labels: [process.env.LABEL]
             });
 
-      - name: Obtener issues superiores (Parent issue nativo)
+      - name: Determinar padre según nivel y obtener issues superiores
         id: jerarquia
         uses: actions/github-script@v7
+        env:
+          NIVEL: ${{ env.NIVEL }}
+          PADRE_EPICA: ${{ env.PADRE_EPICA }}
+          PADRE_FEATURE: ${{ env.PADRE_FEATURE }}
+          PADRE_HISTORIA: ${{ env.PADRE_HISTORIA }}
         with:
           script: |
             const fs = require('fs');
             const path = require('path');
             const { owner, repo, number } = context.issue;
 
-            // Consulta del padre nativo vía GraphQL ("Parent issue")
-            const queryParent = `
-              query($owner: String!, $repo: String!, $number: Int!) {
-                repository(owner: $owner, name: $repo) {
-                  issue(number: $number) {
-                    parent {
-                      number
-                      title
-                      body
-                    }
-                  }
-                }
-              }
-            `;
+            const normalize = text => (text || '')
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .trim()
+              .toLowerCase();
 
-            // Recorrer la cadena de padres hacia arriba y listar todos los ancestros
-            const ancestors = [];
-            const seen = new Set();
-            try {
-              let current = number;
-              for (let i = 0; i < 10; i++) {
-                const data = await github.graphql(queryParent, { owner, repo, number: current });
-                const parent = data.repository.issue.parent;
-                if (!parent) break;
-                if (seen.has(parent.number)) {
-                  throw new Error(`Ciclo detectado en la cadena de padres (issue #${parent.number}).`);
-                }
-                seen.add(parent.number);
-                ancestors.push({ number: parent.number, title: parent.title, body: parent.body || '' });
-                current = parent.number;
-              }
-            } catch (e) {
-              throw new Error(
-                `No se pudo obtener el Parent issue del issue #${number}: ${e.message}. ` +
-                `Asegúrate de que la jerarquía de issues (Sub-issues / Parent issue) esté habilitada en el repositorio.`
-              );
+            const nivel = normalize(process.env.NIVEL);
+
+            // Determinar qué dropdown de padre corresponde según el nivel
+            let padreMapeo = '';
+            if (nivel === 'epica') {
+              padreMapeo = '';
+            } else if (nivel === 'feature') {
+              padreMapeo = process.env.PADRE_EPICA || '';
+            } else if (nivel === 'historia de usuario') {
+              padreMapeo = process.env.PADRE_FEATURE || '';
+            } else if (nivel === 'tarea' || nivel === 'bug') {
+              // Tarea y Bug están al mismo nivel: su padre es una Historia de Usuario
+              padreMapeo = process.env.PADRE_HISTORIA || '';
             }
 
-            // PADRE = primer padre directo (para comentario/etiqueta), vacío si es raíz
-            const padre = ancestors.length > 0 ? ancestors[0].number : '';
-            fs.appendFileSync(process.env.GITHUB_ENV, `PADRE=${padre}\n`);
+            // El valor del dropdown tiene la forma "#42 - Título" -> extraer el número
+            let padre = '';
+            if (padreMapeo) {
+              const m = padreMapeo.match(/#(\d+)/);
+              padre = m ? m[1] : '';
+            }
 
-            // Guardar la cadena completa de ancestros (issues superiores) para los siguientes pasos
+            fs.appendFileSync(process.env.GITHUB_ENV, `PADRE=${padre}\n`);
+            console.log('Nivel:', process.env.NIVEL, '-> Padre seleccionado:', padre || 'ninguno');
+
+            // Función para extraer el valor de un campo del body del formulario
+            const extractField = (body, fieldName) => {
+              const lines = (body || '').replace(/\r/g, '').split('\n');
+              const pattern = new RegExp('^###\\s*' + fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:?\\s*$', 'i');
+              for (let i = 0; i < lines.length; i++) {
+                if (pattern.test(lines[i])) {
+                  for (let j = i + 1; j < lines.length; j++) {
+                    const line = lines[j].trim();
+                    if (line && !line.startsWith('#')) {
+                      return line;
+                    }
+                  }
+                  break;
+                }
+              }
+              return '';
+            };
+
+            // Reconstruir la cadena de issues superiores (ancestros) hacia arriba.
+            // Cada issue generado por este workflow lleva una etiqueta "parent-N".
+            // Los issues antiguos pueden indicar su padre en el body del formulario.
+            // Subimos por esa cadena hasta llegar a la raíz.
+            const ancestors = [];
+            const seen = new Set();
+            let current = padre;
+            for (let i = 0; i < 10 && current; i++) {
+              const num = Number(current);
+              if (!Number.isInteger(num) || seen.has(num)) break;
+              seen.add(num);
+
+              const issueData = await github.rest.issues.get({
+                owner, repo, issue_number: num
+              });
+              const data = issueData.data;
+
+              // 1) Buscar la etiqueta parent-XXX en el issue (su propio padre)
+              let parentNum = '';
+              const parentLabel = (data.labels || []).find(l => /^parent-\d+$/.test(l.name));
+              if (parentLabel) {
+                parentNum = parentLabel.name.split('-')[1];
+              } else {
+                // 2) Issues antiguos: el padre está en el body del formulario
+                const body = data.body || '';
+                const extractMulti = (fields) => {
+                  for (const f of fields) {
+                    const v = extractField(body, f);
+                    if (v) return v;
+                  }
+                  return '';
+                };
+                // Nuevo formulario (dropdowns)
+                let padreBody = extractMulti([
+                  'Padre (Epica)',
+                  'Padre (Feature)',
+                  'Padre (Historia de Usuario)'
+                ]);
+                // Formulario antiguo
+                if (!padreBody) {
+                  padreBody = extractMulti([
+                    'Número del Issue superior (padre)',
+                    'Número del Issue superior'
+                  ]);
+                }
+                const m = padreBody.match(/#(\d+)/);
+                parentNum = m ? m[1] : '';
+              }
+
+              ancestors.push({ number: num, title: data.title, body: data.body || '' });
+              current = parentNum;
+            }
+
+            // Guardar la cadena de issues superiores para los siguientes pasos
             const tempFile = path.join(process.env.RUNNER_TEMP, 'ancestros.json');
             fs.writeFileSync(tempFile, JSON.stringify(ancestors, null, 2));
 
-            console.log('Padre directo:', padre || 'ninguno');
             console.log('Issues superiores (ancestros):', JSON.stringify(ancestors.map(a => a.number), null, 2));
 
       - name: Validar título y nivel del padre
@@ -227,7 +295,7 @@ jobs:
             };
 
             if (nivel !== 'epica' && !padre) {
-              throw new Error('Para este nivel es obligatorio indicar el issue padre (campo "Parent issue" del editor de issues).');
+              throw new Error('Para este nivel es obligatorio indicar el issue padre (usa el selector "Padre" correspondiente del formulario).');
             }
             if (nivel === 'epica' && padre) {
               throw new Error('Un Epica no debe tener issue padre.');

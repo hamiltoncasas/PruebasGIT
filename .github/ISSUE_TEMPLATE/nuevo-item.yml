@@ -8,11 +8,16 @@ body:
       value: |
         ## Selecciona el nivel y el padre (si aplica)
         > **Importante:** Solo los items que NO son Epica necesitan un padre.
+        > **Jerarquía:** Epica > Feature > Historia De Usuario > Tarea (Bug está al mismo nivel que Tarea).
         >
-        > **¿Cómo asignar el padre?** Al crear el issue, usa el campo **Parent issue**
-        > del panel derecho del editor de issues (escribe `#` y el número del issue
-        > superior, o búscalo por título). Ese campo nativo reemplaza al antiguo
-        > "Número del Issue superior" del formulario.
+        > Selecciona **SOLO** el campo de padre que corresponde a tu nivel:
+        > - **Feature** → usa **Padre (Epica)**
+        > - **Historia De Usuario** → usa **Padre (Feature)**
+        > - **Tarea** → usa **Padre (Historia de Usuario)**
+        > - **Bug** → usa **Padre (Historia de Usuario)**
+        >
+        > La lista de opciones se genera automáticamente con los issues existentes
+        > de cada nivel. Si no aparece el padre que necesitas, créalo primero.
         >
         > El título del issue es obligatorio y debe reemplazar el placeholder.
 
@@ -29,6 +34,36 @@ body:
         - Bug
     validations:
       required: true
+
+  - type: dropdown
+    id: padre_epica
+    attributes:
+      label: "Padre (Epica)"
+      description: "Para nivel Feature. Elige la Epica superior."
+      options:
+        - '(Sincronizando opciones... ejecuta el workflow para poblar o crea la Epica primero)'
+    validations:
+      required: false
+
+  - type: dropdown
+    id: padre_feature
+    attributes:
+      label: "Padre (Feature)"
+      description: "Para nivel Historia De Usuario. Elige el Feature superior."
+      options:
+        - '(Sincronizando opciones... ejecuta el workflow para poblar o crea el Feature primero)'
+    validations:
+      required: false
+
+  - type: dropdown
+    id: padre_historia
+    attributes:
+      label: "Padre (Historia de Usuario)"
+      description: "Para nivel Tarea o Bug. Elige la Historia de Usuario superior."
+      options:
+        - '(Sincronizando opciones... ejecuta el workflow para poblar o crea la Historia primero)'
+    validations:
+      required: false
 
   - type: dropdown
     id: status
