@@ -1,0 +1,144 @@
+name: Limpiar Issues del Project v2
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmar:
+        description: 'Escribe SI para confirmar la eliminación de todos los items del Project'
+        required: true
+        default: 'NO'
+
+permissions:
+  contents: read
+
+jobs:
+  limpiar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar confirmación
+        run: |
+          if [ "${{ inputs.confirmar }}" != "SI" ]; then
+            echo "Cancelado: escribe SI en el campo 'confirmar' para eliminar los items."
+            exit 1
+          fi
+
+      - name: Eliminar todos los items del Project v2
+        uses: actions/github-script@v7
+        env:
+          # Si configuraste GH_PAT se usa para acceder al Project.
+          # Si no, usa GITHUB_TOKEN (solo funciona si el Project está vinculado al repo).
+          GH_TOKEN_GQL: ${{ secrets.GH_PAT || github.token }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+
+            // Llamada directa a la API GraphQL (igual que Postman)
+            const GQL_URL = 'https://api.github.com/graphql';
+            const gql = async (query, variables = {}) => {
+              const res = await fetch(GQL_URL, {
+                method: 'POST',
+                headers: {
+                  'Authorization': 'Bearer ' + process.env.GH_TOKEN_GQL,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ query, variables })
+              });
+              const json = await res.json();
+              if (!res.ok || json.errors) {
+                throw new Error(JSON.stringify(json.errors || json, null, 2));
+              }
+              return json.data;
+            };
+
+            // 1) Buscar el Project v2 con campo "Nivel" (repo, usuario, org)
+            const FRAGMENT = `
+              fragment ProjectFields on ProjectV2 {
+                id
+                title
+              }
+            `;
+            const proyectos = [];
+
+            const qRepo = `query($owner: String!, $repo: String!) { repository(owner: $owner, name: $repo) { projectsV2(first: 50) { nodes { ...ProjectFields } } } } ${FRAGMENT}`;
+            const qUser = `query($owner: String!) { user(login: $owner) { projectsV2(first: 50) { nodes { ...ProjectFields } } } } ${FRAGMENT}`;
+            const qOrg  = `query($owner: String!) { organization(login: $owner) { projectsV2(first: 50) { nodes { ...ProjectFields } } } } ${FRAGMENT}`;
+
+            for (const [nombre, query, vars] of [
+              ['repo', qRepo, { owner, repo }],
+              ['usuario', qUser, { owner }],
+              ['org', qOrg, { owner }]
+            ]) {
+              try {
+                const data = await gql(query, vars);
+                const nodes = data.repository?.projectsV2?.nodes || data.user?.projectsV2?.nodes || data.organization?.projectsV2?.nodes || [];
+                for (const n of nodes) proyectos.push({ ...n, origen: nombre });
+              } catch (e) {
+                console.log(`projectsV2 de ${nombre} no disponible:`, e.message);
+              }
+            }
+
+            if (proyectos.length === 0) {
+              throw new Error('No se encontró ningún Project v2 accesible.');
+            }
+            console.log('Projects encontrados:');
+            for (const p of proyectos) console.log(`  - ${p.title} (${p.id})`);
+
+            // 2) Usar el proyecto "Proyecto Avances GIT" o el primero de la lista
+            let project = proyectos.find(p => p.title.includes('Proyecto Avances GIT')) || proyectos[0];
+            console.log(`Limpiando project: "${project.title}"`);
+
+            // 3) Listar items (hasta 1000)
+            const qItems = `
+              query($projectId: ID!) {
+                node(id: $projectId) {
+                  ... on ProjectV2 {
+                    items(first: 100) {
+                      nodes { id }
+                      pageInfo { hasNextPage endCursor }
+                    }
+                  }
+                }
+              }
+            `;
+            const allItems = [];
+            let cursor = null;
+            for (let i = 0; i < 10; i++) {
+              const vars = { projectId: project.id };
+              if (cursor) vars.cursor = cursor;
+              const q = qItems.replace('items(first: 100)', `items(first: 100${cursor ? ', after: "' + cursor + '"' : ''})`);
+              const data = await gql(q, { projectId: project.id });
+              const items = data.node.items;
+              for (const it of items.nodes) allItems.push(it.id);
+              if (!items.pageInfo.hasNextPage) break;
+              cursor = items.pageInfo.endCursor;
+            }
+
+            console.log(`Total de items en el Project: ${allItems.length}`);
+            if (allItems.length === 0) {
+              console.log('El Project ya está vacío. Nada que eliminar.');
+              return;
+            }
+
+            // 4) Eliminar cada item
+            const mDel = `
+              mutation($projectId: ID!, $itemId: ID!) {
+                deleteProjectV2Item(input: { projectId: $projectId, itemId: $itemId }) {
+                  deletedItemId
+                }
+              }
+            `;
+            let ok = 0, err = 0;
+            for (const itemId of allItems) {
+              try {
+                await gql(mDel, { projectId: project.id, itemId });
+                ok++;
+              } catch (e) {
+                err++;
+                console.log(`❌ Error eliminando item ${itemId}: ${e.message}`);
+              }
+            }
+
+            console.log('\n--- Resumen ---');
+            console.log(`Eliminados: ${ok}`);
+            console.log(`Errores: ${err}`);
+            console.log(`Total items del Project: ${allItems.length}`);
