@@ -2,6 +2,9 @@ name: Sincronizar Plantilla de Items
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - '**'
   issues:
     types: [opened, closed, reopened, edited]
 
@@ -36,7 +39,7 @@ jobs:
                 if (pattern.test(lines[i])) {
                   for (let j = i + 1; j < lines.length; j++) {
                     const line = lines[j].trim();
-                    if (line && !line.startsWith('#')) {
+                    if (line && !line.startsWith('#') && normalize(line).replace(/_/g, ' ') !== 'no response') {
                       return line;
                     }
                   }
@@ -98,9 +101,9 @@ jobs:
             fs.writeFileSync(jsonPath, JSON.stringify(data));
             fs.appendFileSync(process.env.GITHUB_ENV, `OPCIONES_JSON=${jsonPath}\n`);
 
-            console.log('Epicas:', porNivel.epica.length);
-            console.log('Features:', porNivel.feature.length);
-            console.log('Historias:', porNivel['historia de usuario'].length);
+            console.log('Epicas:', porNivel.epica.length, JSON.stringify(porNivel.epica));
+            console.log('Features:', porNivel.feature.length, JSON.stringify(porNivel.feature));
+            console.log('Historias:', porNivel['historia de usuario'].length, JSON.stringify(porNivel['historia de usuario']));
 
       - name: Generar plantilla con opciones actualizadas
         run: |
