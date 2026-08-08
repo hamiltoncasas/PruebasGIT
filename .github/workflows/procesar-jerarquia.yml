@@ -144,35 +144,92 @@ jobs:
             const { owner, repo, number } = context.issue;
             const nivel = process.env.NIVEL;
 
-            const queryProject = `
-              query($owner: String!, $repo: String!) {
-                repository(owner: $owner, name: $repo) {
-                  projectsV2(first: 1) {
-                    nodes {
+            const FRAGMENT_FIELDS = `
+              fragment ProjectFields on ProjectV2 {
+                id
+                title
+                fields(first: 50) {
+                  nodes {
+                    ... on ProjectV2FieldCommon {
                       id
-                      title
-                      fields(first: 20) {
-                        nodes {
-                          ... on ProjectV2FieldCommon {
-                            id
-                            name
-                          }
-                          ... on ProjectV2SingleSelectField {
-                            options {
-                              id
-                              name
-                            }
-                          }
-                        }
+                      name
+                    }
+                    ... on ProjectV2SingleSelectField {
+                      options {
+                        id
+                        name
                       }
                     }
                   }
                 }
               }
             `;
-            const projectData = await github.graphql(queryProject, { owner, repo });
-            const project = projectData.repository.projectsV2.nodes[0];
-            if (!project) throw new Error("No se encontró ningún Project v2 en este repositorio.");
+
+            const queryRepo = `
+              query($owner: String!, $repo: String!) {
+                repository(owner: $owner, name: $repo) {
+                  projectsV2(first: 20) {
+                    nodes {
+                      ...ProjectFields
+                    }
+                  }
+                }
+              }
+              ${FRAGMENT_FIELDS}
+            `;
+
+            const queryUser = `
+              query($owner: String!) {
+                user(login: $owner) {
+                  projectsV2(first: 20) {
+                    nodes {
+                      ...ProjectFields
+                    }
+                  }
+                }
+              }
+              ${FRAGMENT_FIELDS}
+            `;
+
+            const queryOrg = `
+              query($owner: String!) {
+                organization(login: $owner) {
+                  projectsV2(first: 20) {
+                    nodes {
+                      ...ProjectFields
+                    }
+                  }
+                }
+              }
+              ${FRAGMENT_FIELDS}
+            `;
+
+            // Recolectar proyectos candidatos (repo, usuario dueño y organización dueña)
+            const proyectos = [];
+            const visitar = (nodes) => { if (nodes) for (const n of nodes) proyectos.push(n); };
+            try {
+              const r = await github.graphql(queryRepo, { owner, repo });
+              visitar(r.repository?.projectsV2?.nodes);
+            } catch (e) { console.log('projectsV2 del repo no disponible:', e.message); }
+            try {
+              const u = await github.graphql(queryUser, { owner });
+              visitar(u.user?.projectsV2?.nodes);
+            } catch (e) { console.log('projectsV2 del usuario no disponible:', e.message); }
+            try {
+              const o = await github.graphql(queryOrg, { owner });
+              visitar(o.organization?.projectsV2?.nodes);
+            } catch (e) { console.log('projectsV2 de la organización no disponible:', e.message); }
+
+            // Buscar el proyecto que tenga el campo "Nivel"
+            let project = null;
+            for (const p of proyectos) {
+              const f = (p.fields?.nodes || []).find(x => x.name === "Nivel");
+              if (f) { project = p; break; }
+            }
+            if (!project) {
+              throw new Error(`No se encontró un Project v2 con campo "Nivel". Proyectos revisados: ${proyectos.map(p => p.title).join(', ') || 'ninguno'}`);
+            }
+            console.log('Project v2 encontrado:', project.title);
 
             const field = project.fields.nodes.find(f => f.name === "Nivel");
             if (!field) throw new Error("No se encontró el campo 'Nivel' en el Project.");
