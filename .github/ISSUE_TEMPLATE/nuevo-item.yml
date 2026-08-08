@@ -36,39 +36,35 @@ body:
     validations:
       required: false
 
-  - type: input
+  - type: date
     id: fecha_previsto_inicio
     attributes:
       label: "Fecha Previsto Inicio"
-      description: "Fecha estimada de inicio (formato: AAAA-MM-DD)"
-      placeholder: "AAAA-MM-DD"
+      description: "Fecha estimada de inicio"
     validations:
       required: false
 
-  - type: input
+  - type: date
     id: fecha_previsto_fin
     attributes:
       label: "Fecha Previsto Fin"
-      description: "Fecha estimada de término (formato: AAAA-MM-DD)"
-      placeholder: "AAAA-MM-DD"
+      description: "Fecha estimada de término"
     validations:
       required: false
 
-  - type: input
+  - type: date
     id: fecha_real_inicio
     attributes:
       label: "Fecha Real Inicio"
-      description: "Fecha real de inicio (formato: AAAA-MM-DD)"
-      placeholder: "AAAA-MM-DD"
+      description: "Fecha real de inicio"
     validations:
       required: false
 
-  - type: input
+  - type: date
     id: fecha_real_final
     attributes:
       label: "Fecha Real Final"
-      description: "Fecha real de término (formato: AAAA-MM-DD)"
-      placeholder: "AAAA-MM-DD"
+      description: "Fecha real de término"
     validations:
       required: false
 
