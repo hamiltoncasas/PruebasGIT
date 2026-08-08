@@ -3,12 +3,6 @@ description: "Crea un item con su nivel"
 title: "[Nivel] - Título"
 labels: ["needs-triage"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        ## Jerarquía: Epica > Feature > Historia De Usuario > Tarea
-        Completa el formulario y asigna un responsable en el campo "Assignees" (panel derecho).
-
   - type: dropdown
     id: nivel
     attributes:
