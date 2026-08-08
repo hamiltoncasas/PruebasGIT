@@ -26,23 +26,30 @@ if hasattr(sys.stdin, 'reconfigure'):
 
 
 def opciones(items, vacio):
-    """Genera las líneas YAML de opciones para un dropdown (8 espacios de indentación)."""
-    if not items:
-        return ["        - '" + vacio + "'"]
-    vistos = set()
+    """Genera las líneas YAML de opciones para un dropdown (8 espacios de indentación).
+
+    GitHub Forms exige un MÍNIMO de 2 opciones por dropdown, así que si hay
+    0 o 1 opciones reales se agrega una opción adicional informativa."""
     resultado = []
-    for item in items:
-        n = item.get('number')
-        if n in vistos:
-            continue
-        vistos.add(n)
-        titulo = item.get('title') or ''
-        if len(titulo) > 70:
-            titulo = titulo[:67] + '...'
-        titulo_limpio = titulo.replace("'", "").replace('"', '')
-        resultado.append("        - '#" + str(n) + " - " + titulo_limpio + "'")
-        if len(resultado) >= 100:
-            break
+    if not items:
+        resultado = ["        - '" + vacio + "'"]
+    else:
+        vistos = set()
+        for item in items:
+            n = item.get('number')
+            if n in vistos:
+                continue
+            vistos.add(n)
+            titulo = item.get('title') or ''
+            if len(titulo) > 70:
+                titulo = titulo[:67] + '...'
+            titulo_limpio = titulo.replace("'", "").replace('"', '')
+            resultado.append("        - '#" + str(n) + " - " + titulo_limpio + "'")
+            if len(resultado) >= 100:
+                break
+    # Garantizar mínimo 2 opciones (requisito de GitHub Forms)
+    if len(resultado) < 2:
+        resultado.append("        - '(Crea más issues de este nivel para ver más opciones.)'")
     return resultado
 
 
@@ -126,35 +133,39 @@ def main():
         '    validations:\n'
         '      required: false\n'
         '\n'
-        '  - type: date\n'
+        '  - type: input\n'
         '    id: fecha_previsto_inicio\n'
         '    attributes:\n'
         '      label: "Fecha Previsto Inicio"\n'
-        '      description: "Fecha estimada de inicio"\n'
+        '      description: "Fecha estimada de inicio (formato: AAAA-MM-DD)"\n'
+        '      placeholder: "AAAA-MM-DD"\n'
         '    validations:\n'
         '      required: false\n'
         '\n'
-        '  - type: date\n'
+        '  - type: input\n'
         '    id: fecha_previsto_fin\n'
         '    attributes:\n'
         '      label: "Fecha Previsto Fin"\n'
-        '      description: "Fecha estimada de término"\n'
+        '      description: "Fecha estimada de término (formato: AAAA-MM-DD)"\n'
+        '      placeholder: "AAAA-MM-DD"\n'
         '    validations:\n'
         '      required: false\n'
         '\n'
-        '  - type: date\n'
+        '  - type: input\n'
         '    id: fecha_real_inicio\n'
         '    attributes:\n'
         '      label: "Fecha Real Inicio"\n'
-        '      description: "Fecha real de inicio"\n'
+        '      description: "Fecha real de inicio (formato: AAAA-MM-DD)"\n'
+        '      placeholder: "AAAA-MM-DD"\n'
         '    validations:\n'
         '      required: false\n'
         '\n'
-        '  - type: date\n'
+        '  - type: input\n'
         '    id: fecha_real_final\n'
         '    attributes:\n'
         '      label: "Fecha Real Final"\n'
-        '      description: "Fecha real de término"\n'
+        '      description: "Fecha real de término (formato: AAAA-MM-DD)"\n'
+        '      placeholder: "AAAA-MM-DD"\n'
         '    validations:\n'
         '      required: false\n'
         '\n'
