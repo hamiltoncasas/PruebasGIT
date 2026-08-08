@@ -197,11 +197,25 @@ jobs:
               }
             }
 
-            // 6) Eliminar los issues del repositorio
+            // 6) Eliminar los issues del repositorio (API REST directa con fetch)
+            const REST_URL = `https://api.github.com/repos/${owner}/${repo}/issues`;
+            const delIssue = async (num) => {
+              const res = await fetch(`${REST_URL}/${num}`, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': 'Bearer ' + process.env.GH_TOKEN_GQL,
+                  'Accept': 'application/vnd.github+json'
+                }
+              });
+              if (res.status !== 204) {
+                const txt = await res.text().catch(() => '');
+                throw new Error(`HTTP ${res.status}: ${txt.slice(0, 300)}`);
+              }
+            };
             let okIssues = 0, errIssues = 0;
             for (const num of numerosIssues) {
               try {
-                await github.rest.issues.delete({ owner, repo, issue_number: num });
+                await delIssue(num);
                 okIssues++;
                 console.log(`🗑️ Issue #${num} eliminado del repositorio`);
               } catch (e) {
