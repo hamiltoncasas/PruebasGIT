@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         ## Jerarquía: Epica > Feature > Historia De Usuario > Tarea
-        Usa el campo Padre que corresponda: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia).
+        💡 **Para filtrado automático del padre** usa: https://hamiltoncasas.github.io/PruebasGIT/crear-item.html
 
   - type: dropdown
     id: nivel
@@ -24,36 +24,13 @@ body:
       required: true
 
   - type: dropdown
-    id: padre_epica
+    id: padre
     attributes:
-      label: "Padre (Epica)"
-      description: "Solo si Nivel = Feature"
+      label: "Padre"
+      description: "Issue superior. Las opciones muestran el nivel entre paréntesis. Elegir solo el inmediatamente superior: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia)"
       options:
-        - '#13 - Epica 1'
-        - '(Crea más issues de este nivel para ver más opciones.)'
-    validations:
-      required: false
-
-  - type: dropdown
-    id: padre_feature
-    attributes:
-      label: "Padre (Feature)"
-      description: "Solo si Nivel = Historia De Usuario"
-      options:
-        - '#14 - ID0001'
-        - '#12 - ID0001'
-        - '#11 - TASK 5'
-    validations:
-      required: false
-
-  - type: dropdown
-    id: padre_historia
-    attributes:
-      label: "Padre (Historia de Usuario)"
-      description: "Solo si Nivel = Tarea o Bug"
-      options:
-        - '#15 - HUS 02'
-        - '(Crea más issues de este nivel para ver más opciones.)'
+        - "(Crea primero el nivel superior para que aparezca aquí)"
+        - "(Crea más issues del nivel superior para ver más opciones)"
     validations:
       required: false
 

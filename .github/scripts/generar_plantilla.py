@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Genera el contenido YAML de la plantilla 'Nuevo Item Jerárquico'.
 
-Cada nivel superior tiene SU PROPIO dropdown, que muestra SOLO los issues del
-nivel inmediatamente superior:
-  - Padre (Epica)          -> solo Epicas  (para Nivel = Feature)
-  - Padre (Feature)        -> solo Features (para Nivel = Historia De Usuario)
-  - Padre (Historia)       -> solo Historias de Usuario (para Nivel = Tarea o Bug)
+El formulario tiene UN SOLO dropdown "Padre" cuyas opciones muestran el
+nivel entre paréntesis, por ejemplo:
+  (Epica) #1 - Título
+  (Feature) #2 - Título
+  (Historia De Usuario) #3 - Título
 
 Recibe por stdin un JSON con la forma:
 {
@@ -25,31 +25,36 @@ if hasattr(sys.stdin, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8')
 
 
-def opciones(items, vacio):
-    """Genera las líneas YAML de opciones para un dropdown (8 espacios de indentación).
+def opciones(con_nivel):
+    """Genera las líneas YAML de opciones para el dropdown 'Padre' (8 espacios).
 
-    GitHub Forms exige un MÍNIMO de 2 opciones por dropdown, así que si hay
-    0 o 1 opciones reales se agrega una opción adicional informativa."""
+    GitHub Forms exige un MÍNIMO de 2 opciones por dropdown."""
     resultado = []
-    if not items:
-        resultado = ["        - '" + vacio + "'"]
-    else:
-        vistos = set()
-        for item in items:
-            n = item.get('number')
-            if n in vistos:
-                continue
-            vistos.add(n)
-            titulo = item.get('title') or ''
-            if len(titulo) > 70:
-                titulo = titulo[:67] + '...'
-            titulo_limpio = titulo.replace("'", "").replace('"', '')
-            resultado.append("        - '#" + str(n) + " - " + titulo_limpio + "'")
+    vistos = set()
+    if con_nivel:
+        for nivel, items in con_nivel:
+            for item in items:
+                n = item.get('number')
+                if n in vistos:
+                    continue
+                vistos.add(n)
+                titulo = item.get('title') or ''
+                if len(titulo) > 80:
+                    titulo = titulo[:77] + '...'
+                titulo_limpio = titulo.replace("'", "").replace('"', '')
+                resultado.append("        - '(" + nivel + ") #" + str(n) + " - " + titulo_limpio + "'")
+                if len(resultado) >= 100:
+                    break
             if len(resultado) >= 100:
                 break
     # Garantizar mínimo 2 opciones (requisito de GitHub Forms)
-    if len(resultado) < 2:
-        resultado.append("        - '(Crea más issues de este nivel para ver más opciones.)'")
+    if not resultado:
+        resultado = [
+            "        - '(Crea primero el nivel superior para que aparezca aquí)'",
+            "        - '(Crea más issues del nivel superior para ver más opciones)'"
+        ]
+    elif len(resultado) == 1:
+        resultado.append("        - '(Crea más issues del nivel superior para ver más opciones)'")
     return resultado
 
 
@@ -60,9 +65,12 @@ def main():
         print('ERROR: No se pudo leer el JSON desde stdin.', file=sys.stderr)
         sys.exit(1)
 
-    epicas = opciones(data.get('epicas', []), '(Aún no hay Epicas. Crea una Epica primero.)')
-    features = opciones(data.get('features', []), '(Aún no hay Features. Crea un Feature primero.)')
-    historias = opciones(data.get('historias', []), '(Aún no hay Historias. Crea una Historia primero.)')
+    con_nivel = [
+        ('Epica', data.get('epicas', [])),
+        ('Feature', data.get('features', [])),
+        ('Historia De Usuario', data.get('historias', [])),
+    ]
+    ops_padre = opciones(con_nivel)
 
     yml = (
         'name: "Nuevo Item Jerárquico"\n'
@@ -74,7 +82,7 @@ def main():
         '    attributes:\n'
         '      value: |\n'
         '        ## Jerarquía: Epica > Feature > Historia De Usuario > Tarea\n'
-        '        Usa el campo Padre que corresponda: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia).\n'
+        '        💡 **Para filtrado automático del padre** usa: https://hamiltoncasas.github.io/PruebasGIT/crear-item.html\n'
         '\n'
         '  - type: dropdown\n'
         '    id: nivel\n'
@@ -91,32 +99,12 @@ def main():
         '      required: true\n'
         '\n'
         '  - type: dropdown\n'
-        '    id: padre_epica\n'
+        '    id: padre\n'
         '    attributes:\n'
-        '      label: "Padre (Epica)"\n'
-        '      description: "Solo si Nivel = Feature"\n'
+        '      label: "Padre"\n'
+        '      description: "Issue superior. Las opciones muestran el nivel entre paréntesis. Elegir solo el inmediatamente superior: Feature→(Epica), Historia→(Feature), Tarea/Bug→(Historia)"\n'
         '      options:\n'
-        + '\n'.join(epicas) + '\n'
-        '    validations:\n'
-        '      required: false\n'
-        '\n'
-        '  - type: dropdown\n'
-        '    id: padre_feature\n'
-        '    attributes:\n'
-        '      label: "Padre (Feature)"\n'
-        '      description: "Solo si Nivel = Historia De Usuario"\n'
-        '      options:\n'
-        + '\n'.join(features) + '\n'
-        '    validations:\n'
-        '      required: false\n'
-        '\n'
-        '  - type: dropdown\n'
-        '    id: padre_historia\n'
-        '    attributes:\n'
-        '      label: "Padre (Historia de Usuario)"\n'
-        '      description: "Solo si Nivel = Tarea o Bug"\n'
-        '      options:\n'
-        + '\n'.join(historias) + '\n'
+        + '\n'.join(ops_padre) + '\n'
         '    validations:\n'
         '      required: false\n'
         '\n'

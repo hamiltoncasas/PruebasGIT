@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crear Item Jerárquico</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 16px; background: #f6f8fa; color: #24292f; }
+  h1 { font-size: 24px; }
+  .card { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 24px; }
+  label { display: block; font-weight: 600; margin: 16px 0 6px; }
+  select, input, textarea { width: 100%; padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff; font-size: 14px; box-sizing: border-box; }
+  .hint { font-size: 12px; color: #57606a; margin-top: 4px; }
+  .btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #1f883d; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 600; }
+  .btn:disabled { background: #94d3a2; cursor: not-allowed; }
+  .error { color: #cf222e; font-size: 13px; margin-top: 8px; display: none; }
+  #info { font-size: 13px; color: #57606a; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Crear Item Jerárquico</h1>
+  <p style="font-size:14px;color:#57606a;">
+    Jerarquía: <strong>Epica > Feature > Historia De Usuario > Tarea</strong>
+    (Bug está al mismo nivel que Tarea)
+  </p>
+
+  <label for="nivel">Nivel</label>
+  <select id="nivel">
+    <option value="">Selecciona un nivel...</option>
+    <option value="epica">Epica</option>
+    <option value="feature">Feature</option>
+    <option value="historia de usuario">Historia De Usuario</option>
+    <option value="tarea">Tarea</option>
+    <option value="bug">Bug</option>
+  </select>
+
+  <label for="padre">Padre <span id="padreRequerido"></span></label>
+  <select id="padre" disabled>
+    <option value="">Selecciona primero el nivel...</option>
+  </select>
+  <div class="hint" id="hintPadre"></div>
+
+  <label for="titulo">Título (obligatorio)</label>
+  <input type="text" id="titulo" placeholder="Ej: Crear pantalla de login">
+
+  <label for="status">Status</label>
+  <select id="status">
+    <option value="Nuevo">Nuevo</option>
+    <option value="En Progreso">En Progreso</option>
+    <option value="En Revisión">En Revisión</option>
+    <option value="Completado">Completado</option>
+  </select>
+
+  <div id="info">Cargando issues del repositorio...</div>
+  <div class="error" id="error"></div>
+
+  <button class="btn" id="crearBtn" disabled>Crear Issue en GitHub</button>
+</div>
+
+<script>
+const REPO_OWNER = 'hamiltoncasas';
+const REPO_NAME = 'PruebasGIT';
+const JERARQUIA = {
+  'epica': '',
+  'feature': 'epica',
+  'historia de usuario': 'feature',
+  'tarea': 'historia de usuario',
+  'bug': 'historia de usuario'
+};
+
+const issuesPorNivel = { 'epica': [], 'feature': [], 'historia de usuario': [] };
+
+const normalize = (t) => (t || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[()\[\]"'"?.,:]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase();
+
+function extractField(body, fieldName) {
+  const lines = (body || '').replace(/\r/g, '').split('\n');
+  const pattern = new RegExp('^###\\s*' + fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:?\\s*$', 'i');
+  for (let i = 0; i < lines.length; i++) {
+    if (pattern.test(lines[i])) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const line = lines[j].trim();
+        if (line && !line.startsWith('#') && normalize(line).replace(/_/g, ' ') !== 'no response') return line;
+      }
+      break;
+    }
+  }
+  return '';
+}
+
+function nivelDeIssue(issue) {
+  // 1) Por etiquetas
+  const labels = (issue.labels || []).map(l => l.name.toLowerCase());
+  const map = { 'epic': 'epica', 'feature': 'feature', 'user-story': 'historia de usuario', 'task': 'tarea', 'bug': 'bug' };
+  for (const [label, nivel] of Object.entries(map)) {
+    if (labels.includes(label)) return nivel;
+  }
+  // 2) Por campo Nivel del body
+  return normalize(extractField(issue.body, 'Nivel'));
+}
+
+async function cargarIssues() {
+  // La API pública de GitHub permite CORS y lectura sin token (límite 60 req/h por IP)
+  const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/issues?state=open&per_page=100`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API GitHub: ${res.status} ${res.statusText}`);
+  const issues = await res.json();
+  let contados = 0;
+  for (const issue of issues) {
+    if (issue.pull_request) continue;
+    const nivel = nivelDeIssue(issue);
+    const entrada = { number: issue.number, title: issue.title };
+    if (nivel === 'epica') issuesPorNivel.epica.push(entrada);
+    else if (nivel === 'feature') issuesPorNivel.feature.push(entrada);
+    else if (nivel === 'historia de usuario') issuesPorNivel['historia de usuario'].push(entrada);
+    contados++;
+  }
+  document.getElementById('info').textContent =
+    `Issues cargados: ${contados}. Epicas: ${issuesPorNivel.epica.length}, Features: ${issuesPorNivel.feature.length}, Historias: ${issuesPorNivel['historia de usuario'].length}`;
+  habilitar();
+}
+
+function habilitar() {
+  document.getElementById('titulo').disabled = false;
+  document.getElementById('status').disabled = false;
+  document.getElementById('nivel').disabled = false;
+  actualizarPadre();
+}
+
+function actualizarPadre() {
+  const nivel = document.getElementById('nivel').value;
+  const sel = document.getElementById('padre');
+  const hint = document.getElementById('hintPadre');
+  const req = document.getElementById('padreRequerido');
+
+  sel.innerHTML = '';
+  sel.disabled = true;
+
+  const nivelPadre = JERARQUIA[nivel] || '';
+  if (!nivel) {
+    sel.innerHTML = '<option value="">Selecciona primero el nivel...</option>';
+    hint.textContent = '';
+    req.textContent = '';
+    return;
+  }
+  if (!nivelPadre) {
+    sel.innerHTML = '<option value="">(Epica no tiene padre)</option>';
+    hint.textContent = 'Una Epica no tiene nivel superior.';
+    req.textContent = '';
+    document.getElementById('crearBtn').disabled = document.getElementById('titulo').value.trim() === '';
+    return;
+  }
+
+  const lista = issuesPorNivel[nivelPadre] || [];
+  req.textContent = '*';
+  if (lista.length === 0) {
+    sel.innerHTML = `<option value="">(No hay ${nivelPadre}s creadas. Crea una primero.)</option>`;
+    hint.textContent = `Debes crear primero una ${nivelPadre === 'epica' ? 'Epica' : nivelPadre === 'feature' ? 'Feature' : 'Historia De Usuario'} para poder seleccionarla.`;
+  } else {
+    sel.innerHTML = '<option value="">Selecciona el padre...</option>' +
+      lista.map(i => `<option value="${i.number}">#${i.number} - ${i.title}</option>`).join('');
+    hint.textContent = `Mostrando solo ${nivelPadre === 'epica' ? 'Epicas' : nivelPadre === 'feature' ? 'Features' : 'Historias de Usuario'} (nivel superior de ${nivel}).`;
+  }
+  sel.disabled = false;
+  document.getElementById('crearBtn').disabled = document.getElementById('titulo').value.trim() === '';
+}
+
+function construirBody() {
+  const nivel = document.getElementById('nivel').value;
+  const padreNum = document.getElementById('padre').value;
+  const titulo = document.getElementById('titulo').value.trim();
+  const status = document.getElementById('status').value;
+
+  let body = `### Nivel\n\n${nivel}\n\n`;
+  if (padreNum) {
+    // Heading correspondiente al nivel superior para que el workflow lo detecte
+    const nivelPadre = JERARQUIA[nivel];
+    const nombreHeading = nivelPadre === 'epica' ? 'Padre (Epica)' : nivelPadre === 'feature' ? 'Padre (Feature)' : 'Padre (Historia de Usuario)';
+    const issuePadre = (issuesPorNivel[nivelPadre] || []).find(i => String(i.number) === padreNum);
+    body += `### ${nombreHeading}\n\n#${padreNum} - ${issuePadre ? issuePadre.title : ''}\n\n`;
+  }
+  body += `### Status\n\n${status}\n\n`;
+  body += '### Fecha Previsto Inicio\n\n_No response_\n\n';
+  body += '### Fecha Previsto Fin\n\n_No response_\n\n';
+  body += '### Fecha Real Inicio\n\n_No response_\n\n';
+  body += '### Fecha Real Final\n\n_No response_\n\n';
+  return body;
+}
+
+function crearEnlace() {
+  const titulo = document.getElementById('titulo').value.trim();
+  const body = construirBody();
+  const params = new URLSearchParams({
+    title: `[${document.getElementById('nivel').value}] ${titulo}`,
+    body: body
+  });
+  // Abrir el formulario nativo de GitHub pre-llenado
+  window.open(`https://github.com/${REPO_OWNER}/${REPO_NAME}/issues/new?${params.toString()}`, '_blank');
+}
+
+document.getElementById('nivel').addEventListener('change', actualizarPadre);
+document.getElementById('titulo').addEventListener('input', () => {
+  document.getElementById('crearBtn').disabled = document.getElementById('titulo').value.trim() === '';
+});
+document.getElementById('crearBtn').addEventListener('click', crearEnlace);
+
+// Inicio
+cargarIssues().catch(e => {
+  document.getElementById('error').style.display = 'block';
+  document.getElementById('error').textContent = 'Error al cargar issues: ' + e.message;
+  document.getElementById('info').textContent = '';
+});
+</script>
+</body>
+</html>
+</｜｜DSML｜｜>
+<task_progress>
+- [x] Crear app web dinámica (crear-item.html): filtra el padre según el nivel en tiempo real
+- [ ] Simplificar formulario nativo: un solo dropdown "Padre" con etiqueta de nivel
+- [ ] Actualizar generador de plantilla (un solo dropdown)
+- [ ] Actualizar procesar_formulario.py y workflow (un solo PADRE)
+- [ ] Testear contra la API real del repo
+- [ ] Commit y push de todo
+</task_progress>
+</write_to_file>
