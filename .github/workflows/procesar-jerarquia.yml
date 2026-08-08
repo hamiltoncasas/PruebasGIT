@@ -144,10 +144,14 @@ jobs:
           fi
           echo "Project v2 debe estar VINCULADO al repo o usar GH_PAT."
 
-      - name: Actualizar campo "Nivel" en Project v2
+      - name: Actualizar campos en Project v2 (Nivel + Fechas)
         uses: actions/github-script@v7
         env:
           NIVEL: ${{ env.NIVEL }}
+          FECHA_PREVISTO_INICIO: ${{ env.FECHA_PREVISTO_INICIO }}
+          FECHA_PREVISTO_FIN: ${{ env.FECHA_PREVISTO_FIN }}
+          FECHA_REAL_INICIO: ${{ env.FECHA_REAL_INICIO }}
+          FECHA_REAL_FINAL: ${{ env.FECHA_REAL_FINAL }}
           # Token usado para llamar a https://api.github.com/graphql directamente.
           # Si existe el secret GH_PAT, usa el PAT (acceso a Proyectos de usuario).
           # Si no, usa el GITHUB_TOKEN por defecto (solo Proyectos vinculados al repo).
@@ -291,22 +295,56 @@ jobs:
             console.log('Item agregado al Project con id:', itemId);
 
             const mutationUpdate = `
-              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
                 updateProjectV2ItemFieldValue(input: {
                   projectId: $projectId,
                   itemId: $itemId,
                   fieldId: $fieldId,
-                  value: { singleSelectOptionId: $optionId }
+                  value: $value
                 }) {
                   clientMutationId
                 }
               }
             `;
-            await gql(mutationUpdate, {
-              projectId: project.id,
-              itemId: itemId,
-              fieldId: field.id,
-              optionId: option.id
-            });
 
+            // Función para actualizar un campo con un value complejo de ProjectV2FieldValue
+            const actualizarCampo = async (fieldId, value) => {
+              await gql(mutationUpdate, {
+                projectId: project.id,
+                itemId: itemId,
+                fieldId: fieldId,
+                value
+              });
+            };
+
+            // 1) Actualizar Nivel (single select)
+            await actualizarCampo(field.id, { singleSelectOptionId: option.id });
             console.log(`Campo "Nivel" actualizado a "${nivel}" en el Project.`);
+
+            // 2) Actualizar los 4 campos de fecha (si el campo existe en el Project)
+            const fechas = [
+              { nombre: 'Fecha Previsto Inicio', valor: process.env.FECHA_PREVISTO_INICIO },
+              { nombre: 'Fecha Previsto Fin', valor: process.env.FECHA_PREVISTO_FIN },
+              { nombre: 'Fecha Real Inicio', valor: process.env.FECHA_REAL_INICIO },
+              { nombre: 'Fecha Real Final', valor: process.env.FECHA_REAL_FINAL }
+            ];
+            for (const f of fechas) {
+              const val = (f.valor || '').trim();
+              if (!val || val === '_No response_') {
+                console.log(`Campo "${f.nombre}": sin valor, se omite.`);
+                continue;
+              }
+              const campo = project.fields.nodes.find(x => x.name === f.nombre);
+              if (!campo) {
+                console.log(`Campo "${f.nombre}" no existe en el Project, se omite.`);
+                continue;
+              }
+              try {
+                // Si el campo es de tipo fecha (Date), usar { date }; si es texto, usar { text }
+                const esFecha = campo.__typename === 'ProjectV2DateField';
+                await actualizarCampo(campo.id, esFecha ? { date: val } : { text: val });
+                console.log(`Campo "${f.nombre}" actualizado a "${val}" en el Project.`);
+              } catch (e) {
+                console.log(`❌ Error actualizando "${f.nombre}": ${e.message}`);
+              }
+            }
