@@ -72,4 +72,4 @@ body:
       label: "Descripción"
       description: "Detalla el contenido de este item"
     validations:
-      required: false
+      required: true
