@@ -69,6 +69,12 @@ jobs:
               .trim()
               .toLowerCase();
 
+            // Quita el prefijo "[Nivel] " del título (si existe) y luego normaliza.
+            // IMPORTANTE: debe ejecutarse ANTES de normalize() porque normalize elimina
+            // los corchetes y el prefijo quedaría incrustado en la clave (esto rompía
+            // la deduplicación de issues existentes al reimportar el CSV).
+            const limpiarTitulo = (t) => normalize((t || '').replace(/^\[[^\]]+\]\s*/, ''));
+
             // --- Parsear CSV (separado por tabs) ---
             const raw = fs.readFileSync(CSV_PATH, 'utf8').replace(/\r/g, '');
             const lines = raw.split('\n').filter(l => l.trim());
@@ -121,7 +127,7 @@ jobs:
                 if (!issue.pull_request) existentes.push(issue);
               }
             }
-            const titulosExistentes = new Set(existentes.map(i => normalize(i.title).replace(/^\[\w\s*\]\s*/i, '')));
+            const titulosExistentes = new Set(existentes.map(i => limpiarTitulo(i.title)));
 
             // --- Ordenar jerárquicamente (padres primero) ---
             const filasOrdenadas = [...filas].sort((a, b) =>
@@ -131,7 +137,7 @@ jobs:
             // Mapa: título(normalizado) -> número real del issue creado (o existente)
             const numeroPorTitulo = new Map();
             for (const i of existentes) {
-              numeroPorTitulo.set(normalize(i.title).replace(/^\[\w\s*\]\s*/i, ''), i.number);
+              numeroPorTitulo.set(limpiarTitulo(i.title), i.number);
             }
 
             const creados = [];
